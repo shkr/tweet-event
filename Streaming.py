@@ -12,16 +12,16 @@ auth = tweepy.OAuthHandler(consumer_key=twitter_auth2['consumer_key'], consumer_
 print auth.set_access_token
 auth.set_access_token(key=twitter_auth2['access_token'], secret=twitter_auth2['access_token_secret'])
 
-def StreamLocation(loc):
+def StreamLocation(loc,verbose):
     
     if loc!='all':
-        box = locationbox[loc]
+        box = locationbox[loc,verbose]
     elif loc:
         box=[]
         for citygrid in locationbox.values():
             box+=citygrid
 
-    listen = Listener(arg=loc)
+    listen = Listener(arg=loc,verbose=verbose)
     stream = tweepy.Stream(auth, listen)
 
     print "Streaming started at %s location..." % (loc)
@@ -32,6 +32,10 @@ def StreamLocation(loc):
 
 if __name__ == '__main__':
     if sys.argv[1] in locationbox.keys() or sys.argv[1]=='all':
-        StreamLocation(sys.argv[1])
+        if len(sys.argv)>2:
+            verbose = True if '-v' in sys.argv[2:] else False
+        else:
+            verbose=False    
+        StreamLocation(loc=sys.argv[1],verbose=verbose)
     else:
         raise KeyError("Geocode for location not known, try one of these <all> or %s"%locationbox.keys())

@@ -21,7 +21,7 @@ def collect_tweets_from_city(arg):
           tso.setIncludeEntities(True)
           tso.setResultType('mixed')
           tso.setGeocode(**location[city])
-          ts = TwitterSearch(**twitter_auth)
+          ts = TwitterSearch(**twitter_auth1)
           
           conn = MySQLdb.connect(**mysql_auth)
           curr = conn.cursor()
