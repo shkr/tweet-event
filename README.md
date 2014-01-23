@@ -3,13 +3,13 @@
 ## Contents
 ### 1. TweetCollector
 
-*Twitter apis connected to :
++Twitter apis connected to :
 
 -RESTAPIV1.1
 
 -StreamingAPIV1.1
 
-*How to stream from RESTAPIV1.1 :
++How to stream from RESTAPIV1.1 :
 
 $> python collectory.py boston
 
@@ -17,7 +17,7 @@ $> python collectory.py boston
 
 $> python streaming.py boston
 
-*Allowed locations 
++Allowed locations 
 
 Location geocodes are listed in geocode.py ; Additional locations can be inserted as dictionary key-value pairs
 
