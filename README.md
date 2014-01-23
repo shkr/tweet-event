@@ -1,11 +1,17 @@
-#READ ME
+#READ ME : TweetEvent v0.00.1 
 
-__title__ = 'TweetEvent'
-__version__ = '0.00.1'
-__author__ = 'Shashank Shekhar'
-__license__ = 'MIT'
-__copyright__ = 'Copyright 2014 Shashank Shekhar'
+## TweetCollector
 
-#V0.0.1
+*Twitter apis connected to :
 -Tweet collection from RESTAPIV1.1
 -Tweet collection from StreamingAPIV1.1
+
+*How to stream from RESTAPIV1.1 :
+$> python collectory.py boston
+
+*How to stream from StreamingAPI v1.1:
+$> python streaming.py boston
+
+*Allowed locations 
+Location geocodes are listed in geocode.py ; Additional locations can be inserted as dictionary key-value pairs
+Source : http://maps.googleapis.com/maps/api/geocode/json?address=%s&sensor=false"%place_name
