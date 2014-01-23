@@ -1,4 +1,4 @@
-#READ ME : TweetEvent v0.01 (Author = Shashank Shekhar)
+#READ ME : TweetEvent v0.01 
 
 ## Contents
 ### 1. TweetCollector
