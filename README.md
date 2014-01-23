@@ -1,4 +1,4 @@
-#READ ME : TweetEvent v0.00.1 
+#READ ME : TweetEvent v0.01
 
 ## TweetCollector
 
