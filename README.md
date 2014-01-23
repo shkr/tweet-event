@@ -3,21 +3,21 @@
 ## Contents
 ### 1. TweetCollector
 
-+Twitter apis connected to :
+1. What Twitter apis is it connected to ?
 
 -RESTAPIV1.1
 
 -StreamingAPIV1.1
 
-1. How to stream from RESTAPIV1.1 :
+2. How to stream from RESTAPIV1.1 :
 
 $> python collector.py boston
 
-2. How to stream from StreamingAPI v1.1:
+3. How to stream from StreamingAPI v1.1:
 
 $> python Streaming.py boston
 
-3. Which locations can it collect tweets from ?
+4. Which locations can it collect tweets from ?
 
 Locations and their geocodes are listed in geocode.py ; Additional locations can be inserted as dictionary key-value pairs
 
