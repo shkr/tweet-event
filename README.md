@@ -9,11 +9,11 @@
 
   -StreamingAPIV1.1
 
-2. How to stream from RESTAPIV1.1 :
+2. How to stream from RESTAPIV1.1 ?
 
   $> python collector.py boston
 
-3. How to stream from StreamingAPI v1.1:
+3. How to stream from StreamingAPI v1.1 ?
 
   $> python Streaming.py boston
 
