@@ -14,13 +14,14 @@ auth.set_access_token(key=twitter_auth2['access_token'], secret=twitter_auth2['a
 
 def StreamLocation(loc,verbose):
     
-    if loc!='all':
-        box = locationbox[loc,verbose]
-    elif loc:
+    if loc!='all' and loc in locationbox.keys():
+        box = locationbox[loc]
+    elif loc=='all':
         box=[]
         for citygrid in locationbox.values():
             box+=citygrid
-
+    else:
+        print ("Location not known ; How about these ones %s ?"%locationbox.keys())
     listen = Listener(arg=loc,verbose=verbose)
     stream = tweepy.Stream(auth, listen)
 

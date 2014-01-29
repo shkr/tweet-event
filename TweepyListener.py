@@ -1,6 +1,8 @@
 from tweepy import StreamListener
+from warnings import filterwarnings
 import time, sys
 import MySQLdb
+filterwarnings('ignore',category=MySQLdb.Warning)
 from t_auth import *
 import json
 
@@ -60,7 +62,13 @@ class Listener(StreamListener):
         tweet = json.loads(data)
 
         #ConnectionHook
-        conn  =  MySQLdb.connect(**mysql_auth)
+        try:
+            conn  =  MySQLdb.connect(**mysql_auth)
+        except:
+            time.sleep(15)
+            conn  =  MySQLdb.connect(**mysql_auth)
+
+
         #DataCursor
         curr = conn.cursor()
         
@@ -89,14 +97,18 @@ class Listener(StreamListener):
             text = tweet["text"].replace('\\','/b/').replace("'","\\'").replace('"','\\"')
 
             user_id = tweet["user"]["id"]
-            screen_name = tweet["user"]["screen_name"]
+            screen_name = tweet["user"]["screen_name"].replace('\\','/b/').replace("'","\\'").replace('"','\\"')
             user_location = tweet["user"]["location"]
             retweeted_status_id = tweet["retweeted_status"]["id"] if "retweeted_status" in tweet.keys() else 0
             query = """INSERT INTO %sTable(lat,lon,created_at,hashtags,urls,user_mentions,media,favorite_count,filter_level,tid,in_reply_to_screen_name,in_reply_to_status_id,in_reply_to_user_id,retweet_count,source,text,user_id,screen_name,user_location,retweeted_status_id) VALUES ("%d","%d","%s","%s","%s","%s","%s","%d","%s","%d","%s","%d","%d","%d","%s","%s","%d","%s","%s","%d")"""%(self.table,lat,lon,created_at,hashtags,urls,user_mentions,media,favorite_count,filter_level,tid,in_reply_to_screen_name,in_reply_to_status_id,in_reply_to_user_id,retweet_count,source,text,user_id,screen_name,user_location,retweeted_status_id)
             
             self.verboseprint(query)
             
-            curr.execute(query)
+            try:
+                curr.execute(query)
+            except:
+                print query
+                return 
 
 
             self.counter += 1    
