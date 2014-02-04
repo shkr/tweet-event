@@ -24,7 +24,8 @@ class Listener(StreamListener):
             conn = MySQLdb.connect(**mysql_auth)
             curr = conn.cursor()
             with conn:
-                curr.execute("CREATE TABLE IF NOT EXISTS %sTable (Id INT PRIMARY KEY AUTO_INCREMENT,lat DECIMAL(7,5),lon DECIMAL(8,5),created_at VARCHAR(40),hashtags VARCHAR(200) CHARACTER SET utf8 COLLATE utf8_general_ci,urls VARCHAR(160) CHARACTER SET utf8 COLLATE utf8_general_ci,user_mentions VARCHAR(200) CHARACTER SET utf8 COLLATE utf8_general_ci,media VARCHAR(200) CHARACTER SET utf8 COLLATE utf8_general_ci,favorite_count INT,filter_level VARCHAR(10),tid BIGINT,in_reply_to_screen_name VARCHAR(20) CHARACTER SET utf8 COLLATE utf8_general_ci,in_reply_to_status_id BIGINT,in_reply_to_user_id BIGINT,retweet_count INT,source VARCHAR(200) CHARACTER SET utf8 COLLATE utf8_general_ci,text VARCHAR(160) CHARACTER SET utf8 COLLATE utf8_general_ci,user_id BIGINT,screen_name VARCHAR(100) CHARACTER SET utf8 COLLATE utf8_general_ci,user_location VARCHAR(40) CHARACTER SET utf8 COLLATE utf8_general_ci,retweeted_status_id BIGINT)"%self.table)
+                #curr.execute("DROP TABLE IF EXISTS %sTable"%self.table)
+                curr.execute("CREATE TABLE IF NOT EXISTS %sTable (Id INT PRIMARY KEY AUTO_INCREMENT,lat DECIMAL(7,5),lon DECIMAL(8,5),place VARCHAR(200),created_at VARCHAR(40),hashtags VARCHAR(200) CHARACTER SET utf8 COLLATE utf8_general_ci,urls VARCHAR(160) CHARACTER SET utf8 COLLATE utf8_general_ci,user_mentions VARCHAR(200) CHARACTER SET utf8 COLLATE utf8_general_ci,media VARCHAR(200) CHARACTER SET utf8 COLLATE utf8_general_ci,favorite_count INT,filter_level VARCHAR(10),tid BIGINT,in_reply_to_screen_name VARCHAR(20) CHARACTER SET utf8 COLLATE utf8_general_ci,in_reply_to_status_id BIGINT,in_reply_to_user_id BIGINT,retweet_count INT,source VARCHAR(200) CHARACTER SET utf8 COLLATE utf8_general_ci,text VARCHAR(160) CHARACTER SET utf8 COLLATE utf8_general_ci,user_id BIGINT,screen_name VARCHAR(100) CHARACTER SET utf8 COLLATE utf8_general_ci,user_location VARCHAR(40) CHARACTER SET utf8 COLLATE utf8_general_ci,retweeted_status_id BIGINT)"%self.table)
             curr.close()
 
             #ErrorTable
@@ -75,12 +76,12 @@ class Listener(StreamListener):
         with conn:
 
             if tweet['coordinates']!=None:
-                 lat =  tweet['coordinates']['coordinates'][1]
-                 lon =  tweet['coordinates']['coordinates'][0]
+                 lat =  float(tweet['coordinates']['coordinates'][1])
+                 lon =  float(tweet['coordinates']['coordinates'][0])
             else:
                  lat = 0
                  lon = 0
-                 
+            place      = tweet['place']['full_name']
             created_at = tweet['created_at']
             hashtags = "%20".join([ item['text'] for item in tweet['entities']['hashtags']])
             urls = "%20".join([ item['url'] for item in tweet['entities']['urls']])
@@ -100,7 +101,7 @@ class Listener(StreamListener):
             screen_name = tweet["user"]["screen_name"].replace('\\','/b/').replace("'","\\'").replace('"','\\"')
             user_location = tweet["user"]["location"]
             retweeted_status_id = tweet["retweeted_status"]["id"] if "retweeted_status" in tweet.keys() else 0
-            query = """INSERT INTO %sTable(lat,lon,created_at,hashtags,urls,user_mentions,media,favorite_count,filter_level,tid,in_reply_to_screen_name,in_reply_to_status_id,in_reply_to_user_id,retweet_count,source,text,user_id,screen_name,user_location,retweeted_status_id) VALUES ("%d","%d","%s","%s","%s","%s","%s","%d","%s","%d","%s","%d","%d","%d","%s","%s","%d","%s","%s","%d")"""%(self.table,lat,lon,created_at,hashtags,urls,user_mentions,media,favorite_count,filter_level,tid,in_reply_to_screen_name,in_reply_to_status_id,in_reply_to_user_id,retweet_count,source,text,user_id,screen_name,user_location,retweeted_status_id)
+            query = """INSERT INTO %sTable(lat,lon,place,created_at,hashtags,urls,user_mentions,media,favorite_count,filter_level,tid,in_reply_to_screen_name,in_reply_to_status_id,in_reply_to_user_id,retweet_count,source,text,user_id,screen_name,user_location,retweeted_status_id) VALUES ("%f","%f","%s","%s","%s","%s","%s","%s","%d","%s","%d","%s","%d","%d","%d","%s","%s","%d","%s","%s","%d")"""%(self.table,lat,lon,place,created_at,hashtags,urls,user_mentions,media,favorite_count,filter_level,tid,in_reply_to_screen_name,in_reply_to_status_id,in_reply_to_user_id,retweet_count,source,text,user_id,screen_name,user_location,retweeted_status_id)
             
             self.verboseprint(query)
             
