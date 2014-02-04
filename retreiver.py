@@ -1,4 +1,5 @@
 import subprocess
+import sys
 import os
 import time
 import json
@@ -191,7 +192,7 @@ def TweetRetreive(time_start=None,timeWindow=60,time_end=None):
 		
 	return [tw,Vocabulary]
 
-def CreateHeatMap(place,UsersUnique=False,timeWindow=24*60*60,useall=True):
+def CreateHeatMap(place,UsersUnique=False,timeWindow=24*60*60,useall=False):
 	"""
 	   place        : Name of location which will be covered using heatmap
 	   UsersUnique : Plot a tweet from a user only once
@@ -233,7 +234,7 @@ def CreateHeatMap(place,UsersUnique=False,timeWindow=24*60*60,useall=True):
 
 		#Data points
 		UID   = item['user_id']
-		LOC   = (float(item['lon']),float(item['lat'])) 
+		LOC   = (float(item['lat']),float(item['lon'])) 
 		
 
 		TIME  = time.strptime(item['created_at'],"%a %b %d %H:%M:%S +0000 %Y")
@@ -262,6 +263,11 @@ def CreateHeatMap(place,UsersUnique=False,timeWindow=24*60*60,useall=True):
 		if (UsersUnique and UserUnique) or (not UsersUnique):
 			tw[timeHashed].append(LOC)
 	
+	#Write last batch of tweets to file
+	with open("retreiverData/HeatMapTweetsfrom%s.coords"%time.strftime('%a%d%b%Y',time_start),'wb') as f:
+				for tweet in tw[timeHashed]:
+					f.write('%f,%f \n'%tweet)
+
 	#Summarize retreiver action
 	with open("retreiverData/HeatMapTweetRetreive.log",'wb') as f:
 		f.write("Simple report for tweets from %s\n"%place+"-"*10+"\n")
@@ -286,4 +292,5 @@ def MakeSpatialSignature(word,tweets,Grid):
 		pass
 
 if __name__=='__main__':
-	TweetTrain()
+	#TweetTrain()
+	CreateHeatMap(sys.argv[1])
