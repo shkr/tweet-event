@@ -5,6 +5,7 @@ import MySQLdb
 filterwarnings('ignore',category=MySQLdb.Warning)
 from t_auth import *
 import json
+import sys
 
 class Listener(StreamListener):
 
@@ -105,14 +106,11 @@ class Listener(StreamListener):
             
             self.verboseprint(query)
             
-            #try:
+            try:
             curr.execute(query)
-            #    print 'success'
-            #except e:
-            #    print (e)
-            #    print "Error inserting : %s"%query
-            #    return 
-
+            
+            except:
+                print "Unexpected error:", sys.exc_info()[0]
 
             self.counter += 1    
             
