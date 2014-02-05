@@ -64,10 +64,10 @@ class Listener(StreamListener):
 
         #ConnectionHook
         try:
-            conn  =  MySQLdb.connect(**mysql_auth,charset='utf8',use_unicode=True)
+            conn  =  MySQLdb.connect(**mysql_auth)
         except:
             time.sleep(15)
-            conn  =  MySQLdb.connect(**mysql_auth,charset='utf8',use_unicode=True)
+            conn  =  MySQLdb.connect(**mysql_auth)
 
 
         #DataCursor
