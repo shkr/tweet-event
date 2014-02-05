@@ -107,8 +107,7 @@ class Listener(StreamListener):
             self.verboseprint(query)
             
             try:
-            curr.execute(query)
-            
+                curr.execute(query)
             except:
                 print "Unexpected error:", sys.exc_info()[0]
 
