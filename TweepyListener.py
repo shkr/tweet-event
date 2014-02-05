@@ -108,7 +108,7 @@ class Listener(StreamListener):
             try:
                 curr.execute(query)
             except:
-                print query
+                print "Error inserting : %s"%query
                 return 
 
 
