@@ -105,13 +105,13 @@ class Listener(StreamListener):
             
             self.verboseprint(query)
             
-            try:
-                curr.execute(query)
-                print 'success'
-            except e:
-                print (e)
-                print "Error inserting : %s"%query
-                return 
+            #try:
+            curr.execute(query)
+            #    print 'success'
+            #except e:
+            #    print (e)
+            #    print "Error inserting : %s"%query
+            #    return 
 
 
             self.counter += 1    
