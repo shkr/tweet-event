@@ -213,7 +213,7 @@ def CreateHeatMap(place,UsersUnique=False,timeWindow=24*60*60,useall=False):
 	
 	curr.execute(Streamingq)
 	ListOfTweets = curr.fetchall()
-
+	print len(ListOfTweets)
     #Time Vars
 	time_start = time.gmtime()
 	timeHashed = time.strftime("%x %X",time_start)
@@ -222,6 +222,9 @@ def CreateHeatMap(place,UsersUnique=False,timeWindow=24*60*60,useall=False):
 	tw 			   = {}		
 	tw[timeHashed] = []
 	UniqueUids     = []
+
+	#HeatMap attributes
+	scale = 0.1 
 
 	for item in ListOfTweets:
 
@@ -242,12 +245,14 @@ def CreateHeatMap(place,UsersUnique=False,timeWindow=24*60*60,useall=False):
 		#TimeWindow update
 		shiftWindow = (TIME<time_start) or (time.mktime(TIME)-time.mktime(time_start)>timeWindow)
 		if shiftWindow:
-			
 			#Write (long,lat) of Tweets collected to file
-			with open("retreiverData/HeatMapTweetsfrom%s.coords"%time.strftime('%a%d%b%Y',time_start),'wb') as f:
+			localstart =  time.localtime(time.mktime(time_start)+time.mktime(time.localtime())-time.mktime(time.gmtime()))
+			localend   =  time.localtime(time.mktime(TIME)+time.mktime(time.localtime())-time.mktime(time.gmtime()))
+			filename = "HeatMapTweetsFROM%sTO%s"%(time.strftime('%d%b%HHR%MMN',localstart),time.strftime('%d%b%HHR%MMN',localend)) 
+			with open('retreiverData/%s.coords'%filename,'wb') as f:
 				for tweet in tw[timeHashed]:
 					f.write('%f,%f \n'%tweet)
-
+			subprocess.call(['python','heatmap.py','--csv=retreiverData/%s.coords'%filename,'-s %s'%(scale),'-H 5000','-W 5000','--extent=%f,%f,%f,%f'%(Grid[1],Grid[0],Grid[3],Grid[2]),'-R 25','--osm', '-o %s.png'%filename])
 			#Welcome new timeHashed
 			time_start 		= TIME
 			timeHashed 		= time.strftime("%x %X",time_start)
@@ -268,8 +273,10 @@ def CreateHeatMap(place,UsersUnique=False,timeWindow=24*60*60,useall=False):
 				for tweet in tw[timeHashed]:
 					f.write('%f,%f \n'%tweet)
 
+	subprocess.call(['python','heatmap.py','--csv=%s'%('retreiverData/HeatMapTweetsfrom%s.coords'%time.strftime('%d%b%HHR%MMN',time_start)),'-s %s'%(scale),'-H 5000 -W 5000','--extent=%f,%f,%f,%f'%(Grid[1],Grid[0],Grid[3],Grid[2]),'-R 25','--osm', '-o %s.png'%("retreiverData/HeatMapTweetsfrom%s"%time.strftime('%a%d%b%Y',time_start))])
+
 	#Summarize retreiver action
-	with open("retreiverData/HeatMapTweetRetreive.log",'wb') as f:
+	with open("retreiverData/HeatMapTweetRetreiveLOG.txt",'wb') as f:
 		f.write("Simple report for tweets from %s\n"%place+"-"*10+"\n")
 		for key in tw.keys():
 			f.write("Timestamp : %s , No. of tweets collected =  %d;\n"%(key,len(tw[key])))
