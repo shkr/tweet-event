@@ -1,3 +1,5 @@
+# -*- coding: utf-8 -*-
+
 import subprocess
 import sys
 import os
@@ -106,7 +108,7 @@ def GetGeocode(place):
 	out = json.loads(subprocess.check_output('curl "http://maps.googleapis.com/maps/api/geocode/json?address=%s&sensor=false"'%place,stderr=open(os.devnull, 'w'),shell=True))['results'][0]['geometry']['location']
 	return [out['lng'],out['lat']]
 
-def TweetRetreive(time_start=None,timeWindow=60,time_end=None):
+def TweetEvent(place,time_start=None,timeWindow=60,time_end=None,collect_items=None,useall=False):
 	"""
 	   time_start : TimeStruct
 	   timeWindow : Units are Seconds
@@ -117,17 +119,19 @@ def TweetRetreive(time_start=None,timeWindow=60,time_end=None):
 	"""
 
 	conn = MySQLdb.connect(**mysql_auth)
-	
+	collect_items = ['tid','lat','lon','created_at','text','user_id','user_location'] if collect_items==None else collect_items
 	curr = conn.cursor()
-	collect_items =['tid','lat','lon','created_at','text','user_id','user_location']
-	Grid          =[-69,43,-73,41]
-	StreamingBoston = "SELECT %s FROM streamerBostonTable WHERE (user_location LIKE ', MA') OR ((lon < %d AND lon > %d) AND (lat<%d AND lat>%d))"%(','.join(collect_items),Grid[0],Grid[2],Grid[1],Grid[3])
-	curr.execute(StreamingBoston)
+	Grid          = locationbox[place]
+	if useall:
+		Streamingq  = "SELECT %s FROM streamerallTable WHERE ((lon >= %d AND lon <= %d) AND (lat>=%d AND lat<=%d))"%(','.join(collect_items),Grid[0],Grid[2],Grid[1],Grid[3])
+	else:
+		Streamingq  = "SELECT %s FROM streamer%sTable"%(','.join(collect_items),place)
+	curr.execute(Streamingq)
 	ListOfTweets = curr.fetchall()
     
 	KeyTags    = ['Z','$','G','M','^','#','@']  #Removed V
 	KeyRegex   = ['A.M.','AM','digit am','P.M.','PM','digit pm']
-	time_start = time.gmtime()
+	time_start = time.gmtime() if time_start==None else time_start
 	timeHashed = time.strftime("%x %X",time_start)
 	Vocabulary = {}
 	Vocabulary[timeHashed] = {}
@@ -146,6 +150,8 @@ def TweetRetreive(time_start=None,timeWindow=60,time_end=None):
 		#Data points
 		try:
 			WORDS = Tokenize(output= subprocess.check_output(['ark-tweet-nlp-0.3.2/./runtagger.sh --no-confidence <<< "%s"'%item['text'].replace('"','\\"').replace('`','')],stderr=open(os.devnull, 'w'),shell=True).split('\t'),tags=KeyTags,regex=KeyRegex)
+			WORDS = item['text'].split(' ')
+
 		except subprocess.CalledProcessError as e:
 			print (e)
 			continue
@@ -154,7 +160,7 @@ def TweetRetreive(time_start=None,timeWindow=60,time_end=None):
 		TIME  = time.strptime(item['created_at'],"%a %b %d %H:%M:%S +0000 %Y")
 		
 		#TimeWindow update
-		shiftWindow = (Time<time_start) or (time.mktime(TIME)-time.mktime(time_start)>timeWindow)
+		shiftWindow = (TIME<time_start) or (time.mktime(TIME)-time.mktime(time_start)>timeWindow)
 		if shiftWindow:
 			for key,value in Vocabulary[timeHashed].items(): Vocabulary[timeHashed][key] = float(value)/len(UniqueUids)
 
@@ -191,6 +197,85 @@ def TweetRetreive(time_start=None,timeWindow=60,time_end=None):
 		
 		
 	return [tw,Vocabulary]
+
+def DataRetreiveForTopicDiscovery(place,time_start=None,timeWindow=60*30,time_end=None,useall=False):
+	
+	"""
+	   time_start : TimeStruct
+	   timeWindow : Units are Seconds
+	   time_end   : TimeStruct
+
+	   From time_start to time_end send list of tweets at time steps timeWindow,
+	   in the form of a tuple (tweetid(tid),KeyWords(W),user_id(uid),[latitude,longitude](l),Time(t)).
+	"""
+
+	conn = MySQLdb.connect(**mysql_auth)
+	collect_items = ['created_at','text']
+	curr = conn.cursor()
+	Grid          = locationbox[place]
+	if useall:
+		Streamingq  = "SELECT %s FROM streamerallTable WHERE ((lon >= %d AND lon <= %d) AND (lat>=%d AND lat<=%d))"%(','.join(collect_items),Grid[0],Grid[2],Grid[1],Grid[3])
+	else:
+		Streamingq  = "SELECT %s FROM streamer%sTable"%(','.join(collect_items),place)
+	
+	curr.execute(Streamingq)
+	ListOfTweets = curr.fetchall()
+    
+	KeyTags    = ['Z','$','G','M','^','#','@']  #Removed V
+	KeyRegex   = ['A.M.','AM','digit am','P.M.','PM','digit pm']
+	time_start = time.gmtime() if time_start==None else time_start
+	timeHashed = time.strftime("%x %X",time_start)
+	
+	tw  = {}
+	tw[timeHashed]=[]	
+	Vocabulary    =[]
+	stpwrds = [ w.strip() for w in open('stopwords.txt').readlines()]
+
+	for item in ListOfTweets:
+
+		#Tweet Dictionary
+		item = dict(zip(collect_items,item))
+
+		#Data points
+		try:
+			#WORDS = Tokenize(output= subprocess.check_output(['ark-tweet-nlp-0.3.2/./runtagger.sh --no-confidence <<< "%s"'%item['text'].replace('"','\\"').replace('`','')],stderr=open(os.devnull, 'w'),shell=True).split('\t'),tags=KeyTags,regex=KeyRegex)
+			WORDS = [ w.lower() if w not in stpwrds else None for w in item['text'].replace('.',' ').replace(',',' ').replace('\'',' ').replace('\"',' ').replace('!',' ').replace('?',' ').replace(';',' ').replace(':',' ').split()	]
+			WORDS = filter(lambda x: x != None,WORDS)
+				
+		except subprocess.CalledProcessError as e:
+			print (e)
+			continue
+		TIME  = time.strptime(item['created_at'],"%a %b %d %H:%M:%S +0000 %Y")
+		#TimeWindow update
+		shiftWindow = (TIME<time_start) or (time.mktime(TIME)-time.mktime(time_start)>timeWindow)
+		if shiftWindow:
+			time_start = TIME
+			timeHashed = time.strftime("%x %X",time_start)
+			tw[timeHashed]=[]
+
+		#Store Tweet
+		tw[timeHashed]+=WORDS
+		
+	#Create Global Vocabulary
+	for v in tw.values():
+		Vocabulary = set(v+list(Vocabulary))
+
+	Vocabulary = list(Vocabulary)
+	with open('retreiverData/TweetRetreiveVocab.txt','wb') as f:
+		for v in Vocabulary:
+			f.write('\n'+v.encode('utf-8'))
+	#Prepare data for LDA
+	
+	for doc in tw.values():
+		with open('retreiverData/TweetRetreive.dat','ab') as f:
+			lineout = ''
+			lineout+='%d'%len(set(doc))
+			for word in doc:
+				lineout  += ' %d'%Vocabulary.index(word)+':'+'%d'%doc.count(word)
+			lineout+='\n'
+			f.write(lineout)
+
+	return True
 
 def CreateHeatMap(place,UsersUnique=False,timeWindow=24*60*60,useall=False):
 	"""
@@ -252,7 +337,13 @@ def CreateHeatMap(place,UsersUnique=False,timeWindow=24*60*60,useall=False):
 			with open('retreiverData/%s.coords'%filename,'wb') as f:
 				for tweet in tw[timeHashed]:
 					f.write('%f,%f \n'%tweet)
-			subprocess.call(['python','heatmap.py','--csv=retreiverData/%s.coords'%filename,'-s %s'%(scale),'-H 5000','-W 5000','--extent=%f,%f,%f,%f'%(Grid[1],Grid[0],Grid[3],Grid[2]),'-R 25','--osm', '-o %s.png'%filename])
+
+			#Check if picture file exists
+			try:
+				g = open('%s.png'%filename)
+			except IOError:
+				subprocess.call(['python','heatmap.py','--csv=retreiverData/%s.coords'%filename,'-s %s'%(scale),'-H 5000','-W 5000','--extent=%f,%f,%f,%f'%(Grid[1],Grid[0],Grid[3],Grid[2]),'-R 25','--osm', '-o %s.png'%filename])
+			
 			#Welcome new timeHashed
 			time_start 		= TIME
 			timeHashed 		= time.strftime("%x %X",time_start)
@@ -269,19 +360,20 @@ def CreateHeatMap(place,UsersUnique=False,timeWindow=24*60*60,useall=False):
 			tw[timeHashed].append(LOC)
 	
 	#Write last batch of tweets to file
-	with open("retreiverData/HeatMapTweetsfrom%s.coords"%time.strftime('%a%d%b%Y',time_start),'wb') as f:
+	with open('retreiverData/HeatMapTweetsfrom%sto%s.coords'%(time.strftime('%d%b%HHR%MMN',time_start),time.strftime('%d%b%HHR%MMN',time.localtime())),'wb') as f:
 				for tweet in tw[timeHashed]:
 					f.write('%f,%f \n'%tweet)
 
-	subprocess.call(['python','heatmap.py','--csv=%s'%('retreiverData/HeatMapTweetsfrom%s.coords'%time.strftime('%d%b%HHR%MMN',time_start)),'-s %s'%(scale),'-H 5000 -W 5000','--extent=%f,%f,%f,%f'%(Grid[1],Grid[0],Grid[3],Grid[2]),'-R 25','--osm', '-o %s.png'%("retreiverData/HeatMapTweetsfrom%s"%time.strftime('%a%d%b%Y',time_start))])
+	subprocess.call(['python','heatmap.py','--csv=%s'%('retreiverData/HeatMapTweetsfrom%sto%s.coords'%(time.strftime('%d%b%HHR%MMN',time_start),time.strftime('%d%b%HHR%MMN',time.localtime()))),'-s %s'%(scale),'-H 5000','-W 5000','--extent=%f,%f,%f,%f'%(Grid[1],Grid[0],Grid[3],Grid[2]),'-R 25','--osm', '-o %s.png'%("HeatMapTweetsfrom%sto%s.png"%(time.strftime('%d%b%HHR%MMN',time_start),time.strftime('%d%b%HHR%MMN',time.localtime()))) ])
 
 	#Summarize retreiver action
 	with open("retreiverData/HeatMapTweetRetreiveLOG.txt",'wb') as f:
-		f.write("Simple report for tweets from %s\n"%place+"-"*10+"\n")
+		f.write("Simple report for tweets from %s\n , time in GMT"%place+"-"*10+"\n")
 		for key in tw.keys():
 			f.write("Timestamp : %s , No. of tweets collected =  %d;\n"%(key,len(tw[key])))
 
 	return True
+
 
 def UpdateEventWords(word,tweets):
 	"""
@@ -299,5 +391,7 @@ def MakeSpatialSignature(word,tweets,Grid):
 		pass
 
 if __name__=='__main__':
-	#TweetTrain()
-	CreateHeatMap(sys.argv[1])
+	if sys.argv[1]=='lda':
+		DataRetreiveForTopicDiscovery(sys.argv[2])
+	elif sys.argv[1]=='heatmap':
+		CreateHeatMap(sys.argv[2])
