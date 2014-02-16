@@ -1,8 +1,0 @@
-Simple report for tweets from Boston, time in GMT
-----------
-Timestamp : 02/04/14 00:52:36 , No. of tweets collected =  12365;
-Timestamp : 02/08/14 00:52:41 , No. of tweets collected =  28108;
-Timestamp : 02/09/14 00:52:44 , No. of tweets collected =  202;
-Timestamp : 02/05/14 00:52:37 , No. of tweets collected =  33025;
-Timestamp : 02/06/14 00:52:38 , No. of tweets collected =  27834;
-Timestamp : 02/07/14 00:52:40 , No. of tweets collected =  26721;
