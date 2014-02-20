@@ -6,6 +6,8 @@ import os
 import time
 import json
 import MySQLdb
+import urllib
+import math
 import numpy as np
 from t_auth import *
 from geocode import locationbox
@@ -37,6 +39,8 @@ class TweetIterator:
 	def __init__(self,place,useall=False):
 		self.place = place
 		self.useall = useall
+		
+
 		conn = MySQLdb.connect(**mysql_auth)
 		self.curr = conn.cursor()
 		Grid          = locationbox[self.place]
@@ -47,13 +51,13 @@ class TweetIterator:
 			Streamingq  = "SELECT %s FROM streamer%sTable"%(','.join(self.collect_items),self.place)
 		self.curr.execute(Streamingq)
 
-		self.tokenize = Tokenizer(lowercase=False,normalize=1,ignorestopwords=True).tokenize
+		self.tokenize = Tokenizer(lowercase=False,normalize=2,ignorestopwords=True).tokenize
 
 	def __iter__(self):
 		for tweet in self.curr:
 			yield self.preprocessing(tweet[5]).split()
 			#yield [tweet[0],tweet[1],tweet[2],tweet[3],tweet[4],self.preprocessing(tweet[5])]
-
+	
 	def preprocessing(self,text):
 		"""
 		Process tweet here 
@@ -136,24 +140,44 @@ def TweetTrain(timeWindow=60):
 	with open('LegacyVocabulary.json','wb') as f:
 		json.dump(LegacyVocabulary,f,ensure_ascii=False,indent=5,separators=(',',':'))
 
-def GetGeocode(place):
+GEOCODE_BASE_URL = 'https://maps.googleapis.com/maps/api/geocode/json'
+
+def GetGeocode(address,sensor='false', **args):
 	"""Makes call to GoogleMaps API and returns 
 	   longitude,latitude for place name"""
+	args.update({
+			'address': address,
+			'sensor' : sensor,
+		})
+	url = GEOCODE_BASE_URL + '?' + urllib.urlencode(args)
 
-	place = '%20'.join(place.replace(',',' ').split())
-	try:	
-		out = json.loads(subprocess.check_output('curl "http://maps.googleapis.com/maps/api/geocode/json?address=%s&sensor=false"'%place,stderr=open(os.devnull, 'w'),shell=True))['results'][0]['geometry']['location']
-	except IndexError:
-		print place
-		print json.loads(subprocess.check_output('curl "http://maps.googleapis.com/maps/api/geocode/json?address=%s&sensor=false"'%place,stderr=open(os.devnull, 'w'),shell=True))['results']
-		raise IndexError	
-	return [out['lng'],out['lat']]
-
-def GetPlaceName(lat,lon):
+	out = json.load(urllib.urlopen(url))['results'][0]['geometry']['location']
+	return [out['lng'],out['lat']] 
+	
+def GetPlaceName(lat,lon,sensor='false',**args):
 	"""Makes call to GoogleMaps API and returns 
 	   human readable address for lat,lon"""
-	out = json.loads(subprocess.check_output('curl "https://maps.googleapis.com/maps/api/geocode/json?latlng=%s,%s&sensor=false"'%(lat,lon),stderr=open(os.devnull, 'w'),shell=True))['formatted_address']
-	return out
+	args.update({
+			'latlng': '%s,%s'%(lat,lon),
+			'sensor' : sensor,
+		})
+	url = GEOCODE_BASE_URL + '?' + urllib.urlencode(args)
+	
+	ct=0;count = 50;
+	while ct<=count:
+		try:
+			out = json.loads(subprocess.check_output("curl --request GET '%s'"%url,stderr=open(os.devnull, 'w'),shell=True))['results'][0]['formatted_address']
+			break		
+		except IndexError:
+			ct+=1
+			#print url
+			continue
+	if ct<=count:
+		return out
+	else:
+		raise IndexError
+	
+
 
 def TweetEvent(place,time_start=None,timeWindow=60,time_end=None,collect_items=None,useall=False):
 	"""
@@ -325,8 +349,28 @@ def DataRetreiveForTopicDiscovery(place,time_start=None,timeWindow=60*30,time_en
 			f.write(lineout)
 
 	return True
+def IsitCloseOnMap((lat1,lon1),(lat2,lon2),kms=2):
+	"""
+	Reference
+	---------
+	longitude :
+	The equator is divided into 360 degrees of longitude, so each degree at the equator represents 111,319.9 metres or
+    approximately 111.32 km. As one moves away from the equator towards a pole, however, one degree of longitude is multiplied by
+    the cosine of the latitude, decreasing the distance, approaching zero at the pole
 
-def ClusterGeoTag(place,UsersUnique=True,timeWindow=-1,useall=False):
+    latitude:
+    Each degree of latitude is approximately 69 miles (111 kilometers) apart. The range varies (due to the earth's slightly ellipsoid shape) 
+    from 68.703 miles (110.567 km) at the equator to 69.407 (111.699 km) at the poles.
+    """
+	
+	rad_km  = ((lat1-lat2)*(110.567+((111.699-110.567)*(abs(lat1)/90.0))),(lon1-lon2)*(math.cos(lat1*math.pi/180.0))*111.32)
+	if rad_km[0]**2 + rad_km[1]**2 < kms**2:
+		return True
+	else:
+		return False
+
+
+def ClusterGeoTag(place,n_clusters=5,radii=2,UsersUnique=False,timeWindow=60*15,useall=False,visualize=False,zoom=13,CatchImportantWord=False):
 	"""
 	   place        : Name of location which will be covered using heatmap
 	   UsersUnique : Plot a tweet from a user only once
@@ -336,8 +380,8 @@ def ClusterGeoTag(place,UsersUnique=True,timeWindow=-1,useall=False):
 	conn = MySQLdb.connect(**mysql_auth)
 	
 	#Fetch Tweets
-	curr = conn.cursor()
-	collect_items =['user_id','created_at','lat','lon','place']
+	ListOfTweets = conn.cursor()
+	collect_items =['text','user_id','screen_name','created_at','lat','lon','place']
 	Grid          = locationbox[place]
 
 	if useall:
@@ -345,92 +389,223 @@ def ClusterGeoTag(place,UsersUnique=True,timeWindow=-1,useall=False):
 	else:
 		Streamingq  = "SELECT %s FROM streamer%sTable"%(','.join(collect_items),place)
 	
-	curr.execute(Streamingq)
-	ListOfTweets = curr.fetchall()
+	ListOfTweets.execute(Streamingq)
 	
 	#Time Vars
 	time_start = time.gmtime()
+	
 
 	#TweetList and User List
-	tw 			   = []	
+	tw 			   = {}
 	UniqueUids     = []
-	TimeWindow     = []
+	
+
+	#Conditional variable needs initialization
+	UserUnique     = False
+	
+	if visualize:
+		import smopy
+		from PIL import ImageDraw
+		ImageCount = 1
+
+	
+	if CatchImportantWord:
+		from collections import Counter
+		TOKEN = Tokenizer(lowercase=False,normalize=2,ignorestopwords=True).tokenize
 
 	for item in ListOfTweets:
 
 		#Tweet Dictionary
 		item = dict(zip(collect_items,item))
-		
-		#Data points
+
+		#Intialize with place name if GPS absent
 		if item['lon']==0:
+			try:
+				item['lon'],item['lat'] = GetGeocode(item['place'])
+			except IndexError:
+				print ('GoogleMap did not return for %s'%item['place'])
+				continue
+
+		#Block all tweets outside place grid
+		if item['lon']==0 or not (item['lon']>=Grid[0] and item['lon']<=Grid[2] and item['lat']>=Grid[1] and item['lat']<=Grid[3]):
 			continue
 
+		#Intialize data point
+		TEXT   = '@'+item['screen_name']+'\t _tweeted_ \t'+item['text']
 		UID   = item['user_id']
 		LOC   = (float(item['lat']),float(item['lon'])) 
 		TIME  = time.strptime(item['created_at'],"%a %b %d %H:%M:%S +0000 %Y")
+		del item
 
 		#TimeWindow update
 		shiftWindow = ((TIME<time_start) or (time.mktime(TIME)-time.mktime(time_start)>timeWindow)) and timeWindow!=-1
 		
 		if shiftWindow:
 			#Write (long,lat) of Tweets collected to file
-			localstart =  time.localtime(time.mktime(time_start)+time.mktime(time.localtime())-time.mktime(time.gmtime()))
-			localend   =  time.localtime(time.mktime(TIME)+time.mktime(time.localtime())-time.mktime(time.gmtime()))
-			TimeWindow.append([localstart,localend])
+			localstart =  time.strftime('%d%b%HHR%MMN',time.localtime(time.mktime(time_start)+time.mktime(time.localtime())-time.mktime(time.gmtime())))
+			localend   =  time.strftime('%d%b%HHR%MMN',time.localtime(time.mktime(TIME)+time.mktime(time.localtime())-time.mktime(time.gmtime())))
 
-			#Generate Clusters Here with tw which contains list of LOCs
-			ms 		  = cluster.MeanShift()
-			ms.fit(np.vstack(tuple(tw)))
-			labels    = ms.labels_
-			cluster_centers = ms.cluster_centers_
-			labels_unique 	= np.unique(labels)
-			n_clusters 		= len(labels_unique)
-			geo_centers		= [ GetPlaceName(lat,lon) for lat,lon in cluster_centers]
-			
-			print("\n timeframe start: %s and end: %s"%(localstart,localend))
-			print("number of estimated clusters : %d" % n_clusters_)
-			print("the geotag centers : %s"%'\n'.join(geo_centers))
+			if len(tw)!=0:
+				#Generate Clusters Here with tw which contains list of LOCs
+				km 		  = cluster.KMeans(n_clusters = n_clusters,n_jobs=-2)
+				km.fit(np.vstack(tuple(tw['LOC'])))
+
+				#Intialize TweetCluster dict to collect cluster tweets
+				TweetCluster = {}
+				for i in range(0,len(km.cluster_centers_)): TweetCluster[i]=[];
+				
+				#For visualize
+				if visualize:
+					TweetClusterLOC = {}
+					for i in range(0,len(km.cluster_centers_)): TweetClusterLOC[i]=[];
+				
+				#Collect tweets for cluster
+				for ct,cl in enumerate(km.labels_):
+					if IsitCloseOnMap(tw['LOC'][ct],km.cluster_centers_[cl],kms=radii):
+						TweetCluster[cl].append(tw['TEXT'][ct])
+						if visualize:
+							TweetClusterLOC[cl].append(tw['LOC'][ct])
+					else:
+						pass
+				
+
+				#Write cluster tweets to file 
+				with open('retreiverData/ClusterCentersfrom%sto%s'%(localstart,localend),'wb') as f:
+					for cl,cloc in enumerate(km.cluster_centers_):
+						try:
+							f.write('\n \nCluster %s : Location is %s'%(cl,GetPlaceName(cloc[0],cloc[1])))	
+						except IndexError:
+							f.write('\n \nCluster %s : Location (%f,%f)'%(cl,cloc[0],cloc[1]))
+						
+						"""Simple catching of common tweets which use TOP MOST USED/IMPORTANT WORD"""
+						if CatchImportantWord:
+							Cl_Vocab = []
+							for item in TweetCluster[cl]: Cl_Vocab +=filter(lambda x: len(x)>2 and x.isalnum() and x not in ['USERNAME','URL','PHONENUMBER','TIME','NUMBER'],TOKEN(item.split('\t _tweeted_ \t')[-1]));
+							IMP_WORDS = [Counter(Cl_Vocab).most_common()[0][0],Counter(Cl_Vocab).most_common()[1][0]]
+							f.write('\n Words which mention top used word in cluster : %s\n'%IMP_WORDS)
+							counting = 0
+							for item in TweetCluster[cl]:
+								if (IMP_WORDS[0] in item.split('\t _tweeted_ \t')[-1]) or (IMP_WORDS[1] in item.split('\t _tweeted_ \t')[-1]):
+									f.write('\n%d. %s'%(counting,item.encode('utf-8')))
+									counting+=1
+
+						f.write('\nPrinting tweets , Count = %s ..... \n%s'%(len(TweetCluster[cl]),'\n'.join(  [item.encode('utf-8') for item in TweetCluster[cl]])))
+
+					#Remove TweetCluster from memory
+					del TweetCluster
+
+				#Plot on map
+				if visualize:
+					Map = smopy.Map((Grid[1],Grid[0],Grid[3],Grid[2]),z=zoom)
+					draw = ImageDraw.Draw(Map.img)
+					for cl,cloc in enumerate(km.cluster_centers_):
+						cx,cy = Map.to_pixels(cloc[0],cloc[1])	
+						draw.polygon([Map.to_pixels(item[0],item[1]) for item in TweetClusterLOC[cl]],outline='#0000FF')
+						try:
+							draw.text((cx,cy),'%s. '%cl+GetPlaceName(cloc[0],cloc[1]).split(',')[0],fill='#000000')
+						except IndexError:
+							draw.text((cx,cy),"%s. [Cluster]"%cl,fill='#000000')
+					del draw
+					Map.save_png('retreiverData/ClusterCentersfrom%sto%s.png'%(localstart,localend))
+					Map.save_png('retreiverData/Img%s.png'%(((5-len(str(ImageCount)))*'0')+str(ImageCount)))
+					ImageCount +=1
+					del Map
+					del TweetClusterLOC
+
 
 			#Welcome new timeHashed
 			time_start 		= TIME
 			UniqueUids 		= [] 
-			tw              = []
+			tw              = {}
+			tw['LOC']		= []
+			tw['TEXT']		= []
 
 
-		if UID not in UniqueUids:
+		if UID not in UniqueUids and UsersUnique:
 			UniqueUids += [UID]
 			UserUnique = True
 
-		#Write Co-ordinates to tweet dictionary
+		#Write LOC and TEXT values to tweet dictionary
 		if (UsersUnique and UserUnique) or (not UsersUnique):
-			tw.append(LOC)
+			tw['LOC'].append(LOC)
+			tw['TEXT'].append(TEXT)
+			UserUnique = False
+
+	#Intialize TweetCluster dict to collect cluster tweets
+	TweetCluster = {}
+	for i in range(0,len(km.cluster_centers_)): TweetCluster[i]=[];
+	
+	#For visualize
+	if visualize:
+		TweetClusterLOC = {}
+		for i in range(0,len(km.cluster_centers_)): TweetClusterLOC[i]=[];
 
 	#Print last batch of clusters found
 	localstart =  time.localtime(time.mktime(time_start)+time.mktime(time.localtime())-time.mktime(time.gmtime()))
 	localend   =  time.localtime(time.mktime(TIME)+time.mktime(time.localtime())-time.mktime(time.gmtime()))
-	TimeWindow.append([localstart,localend])
 
 	#Generate Clusters Here with tw which contains list of LOCs
-	ms 		  = cluster.MeanShift()
-	ms.fit(np.vstack(tuple(tw)))
-	labels    = ms.labels_
-	cluster_centers = ms.cluster_centers_
-	labels_unique 	= np.unique(labels)
-	n_clusters 		= len(labels_unique)
-	geo_centers		= [ GetPlaceName(lat,lon) for lat,lon in cluster_centers]
-	
-	print("\n timeframe start: %s and end: %s"%(localstart,localend))
-	print("number of estimated clusters : %d" % n_clusters_)
-	print("the geotag centers : %s"%'\n'.join(geo_centers))
+	km 		  = cluster.KMeans(n_clusters = n_clusters,n_jobs=-2)
+	km.fit(np.vstack(tuple(tw['LOC'])))
 
+	for ct,cl in enumerate(km.labels_):
+		if IsitCloseOnMap(tw['LOC'][ct],km.clusters_centers_[cl]):
+			TweetCluster[cl].append(tw['TEXT'][ct])
+			if visualize:
+				TweetClusterLOC[cl].append(tw['LOC'][ct])
+		else:
+			pass
+		
+	with open('retreiverData/ClusterCentersfrom%sto%s'%(localstart,localend),'wb') as f:
+		for cl,cloc in enumerate(km.cluster_centers_):
+			try:
+				f.write('\n Cluster %s : Location is %s'%(cl,GetPlaceName(cloc[0],cloc[1])))	
+			except IndexError:
+				f.write('\n Cluster %s : Location (%f,%f)'%(cl,cloc[0],cloc[1]))
+
+			"""Simple catching of common tweets which use TOP MOST USED/IMPORTANT WORD"""
+			if CatchImportantWord:
+				Cl_Vocab = []
+				for item in TweetCluster[cl]: Cl_Vocab +=filter(lambda x: len(x)>2 and x.isalnum() and x not in ['USERNAME','URL','PHONENUMBER','TIME','NUMBER'],TOKEN(item.split('\t _tweeted_ \t')[-1]));
+				IMP_WORDS = [Counter(Cl_Vocab).most_common()[0][0],Counter(Cl_Vocab).most_common()[1][0]]
+				f.write('\n Words which mention top used word in cluster : %s\n'%IMP_WORDS)
+				counting = 0
+				for item in TweetCluster[cl]:
+					if (IMP_WORDS[0] in item.split('\t _tweeted_ \t')[-1]) or (IMP_WORDS[1] in item.split('\t _tweeted_ \t')[-1]):
+						f.write('\n%d. %s'%(counting,item.encode('utf-8')))
+						counting+=1
+
+			f.write('\nPrinting tweets , Count = %s \n%s'%(len(TweetCluster[cl]),'\n'.join(  [item.encode('utf-8') for item in TweetCluster[cl]])))
+
+		#Remove TweetCluster from memory
+		del TweetCluster
+
+	#Plot on map
+	if visualize:
+		Map = smopy.Map((Grid[1],Grid[0],Grid[3],Grid[2]),z=zoom)
+		draw = ImageDraw.Draw(Map.img)
+		for cl,cloc in enumerate(km.cluster_centers_):
+			cx,cy = Map.to_pixels(cloc[0],cloc[1])	
+			draw.polygon([Map.to_pixels(item[0],item[1]) for item in TweetClusterLOC[cl]],outline='#0000FF')
+			try:
+				draw.text((cx,cy),GetPlaceName(cloc[0],cloc[1]).split(',')[0],fill='#000000')
+			except IndexError:
+				draw.text((cx,cy),"Cluster : %d"%cl,fill='#000000')
+		del draw
+		Map.save_png('retreiverData/ClusterCentersfrom%sto%s.png'%(localstart,localend))
+		Map.save_png('retreiverData/Img%s.png'%(((5-len(str(ImageCount)))*'0')+str(ImageCount)))
+		del Map
+		del TweetClusterLOC
+			
 	return True
 
 
-def CreateHeatMap(place,UsersUnique=False,timeWindow=24*60*60,useall=False):
+def CreateHeatMap(place,fileid=True,UsersUnique=False,timeWindow=15*60,useall=False):
 	"""
 	   place        : Name of location which will be covered using heatmap
 	   UsersUnique : Plot a tweet from a user only once
 	   timeWindow   : The timecovered by one heatmap
+	   begin_at_hour : Set the hour of starting the timeWindow , between (1-24)
 	"""
 
 	conn = MySQLdb.connect(**mysql_auth)
@@ -459,7 +634,10 @@ def CreateHeatMap(place,UsersUnique=False,timeWindow=24*60*60,useall=False):
 	UniqueUids     = []
 
 	#HeatMap attributes
-	scale = 0.1 
+	scale = str(0.1)
+	zoom  = str(14)
+	if fileid:
+		fid = 1
 
 	for item in ListOfTweets:
 
@@ -474,13 +652,19 @@ def CreateHeatMap(place,UsersUnique=False,timeWindow=24*60*60,useall=False):
 		LOC   = (float(item['lat']),float(item['lon']))
 
 		TIME  = time.strptime(item['created_at'],"%a %b %d %H:%M:%S +0000 %Y")
+
+
 		#TimeWindow update
 		shiftWindow = (TIME<time_start) or (time.mktime(TIME)-time.mktime(time_start)>timeWindow)
 		if shiftWindow:
 			#Write (long,lat) of Tweets collected to file
 			localstart =  time.localtime(time.mktime(time_start)+time.mktime(time.localtime())-time.mktime(time.gmtime()))
 			localend   =  time.localtime(time.mktime(TIME)+time.mktime(time.localtime())-time.mktime(time.gmtime()))
-			filename = "HeatMapTweetsFROM%sTO%s"%(time.strftime('%d%b%HHR%MMN',localstart),time.strftime('%d%b%HHR%MMN',localend)) 
+			if not fileid:
+				filename = "HeatMapTweetsFROM%sTO%s"%(time.strftime('%d%b%HHR%MMN',localstart),time.strftime('%d%b%HHR%MMN',localend)) 
+			else:
+				filename = 'Img%s'%(((4-len(str(fid)))*'0')+str(fid))
+				fid+=1
 			with open('retreiverData/%s.coords'%filename,'wb') as f:
 				for tweet in tw[timeHashed]:
 					f.write('%f,%f \n'%tweet)
@@ -490,7 +674,7 @@ def CreateHeatMap(place,UsersUnique=False,timeWindow=24*60*60,useall=False):
 				#g = open('%s.png'%filename)
 				
 			#except IOError:
-			subprocess.call(['python','heatmap.py','--csv=retreiverData/%s.coords'%filename,'-s %s'%(scale),'-W','3000','-H','3000','--extent=%f,%f,%f,%f'%(Grid[1],Grid[0],Grid[3],Grid[2]),'-R 25','--osm', '-o %s.png'%filename])
+			subprocess.call(['python','heatmap.py','--csv=retreiverData/%s.coords'%filename,'-z',zoom,'-s', scale,'-W','6000','--extent=%f,%f,%f,%f'%(Grid[1],Grid[0],Grid[3],Grid[2]),'-R 25','--osm', '-o %s.png'%filename])
 			
 			#Welcome new timeHashed
 			time_start 		= TIME
@@ -511,8 +695,13 @@ def CreateHeatMap(place,UsersUnique=False,timeWindow=24*60*60,useall=False):
 	with open('retreiverData/HeatMapTweetsfrom%sto%s.coords'%(time.strftime('%d%b%HHR%MMN',time_start),time.strftime('%d%b%HHR%MMN',time.localtime())),'wb') as f:
 				for tweet in tw[timeHashed]:
 					f.write('%f,%f \n'%tweet)
+	if not fileid:
+		filename = 'HeatMapTweetsfrom%sto%s.coords'%(time.strftime('%d%b%HHR%MMN',time_start),time.strftime('%d%b%HHR%MMN',time.localtime()))
+	else:
+		filename = 'Img%s'%(((4-len(str(fid)))*'0')+str(fid))
+		fid+=1
 	
-	subprocess.call(['python','heatmap.py','--csv=%s'%('retreiverData/HeatMapTweetsfrom%sto%s.coords'%(time.strftime('%d%b%HHR%MMN',time_start),time.strftime('%d%b%HHR%MMN',time.localtime()))),'-s %s'%(scale),'-H 3000','-W 3000','--extent=%f,%f,%f,%f'%(Grid[1],Grid[0],Grid[3],Grid[2]),'-R 25','--osm', '-o %s.png'%("HeatMapTweetsfrom%sto%s.png"%(time.strftime('%d%b%HHR%MMN',time_start),time.strftime('%d%b%HHR%MMN',time.localtime()))) ])
+	subprocess.call(['python','heatmap.py','--csv=%s'%('retreiverData/%s'%filename),'-z',zoom,'-s', scale,'-H 3000','-W 3000','--extent=%f,%f,%f,%f'%(Grid[1],Grid[0],Grid[3],Grid[2]),'-R 25','--osm', '-o','%s.png'%(filename)])
 
 	#Summarize retreiver action
 	with open("retreiverData/HeatMapTweetRetreiveLOG.txt",'wb') as f:
@@ -543,3 +732,5 @@ if __name__=='__main__':
 		DataRetreiveForTopicDiscovery(sys.argv[2])
 	elif sys.argv[1]=='heatmap':
 		CreateHeatMap(sys.argv[2])
+	elif sys.argv[1]=='cluster':
+		ClusterGeoTag(sys.argv[2])
