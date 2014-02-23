@@ -140,39 +140,78 @@ def TweetTrain(timeWindow=60):
 	with open('LegacyVocabulary.json','wb') as f:
 		json.dump(LegacyVocabulary,f,ensure_ascii=False,indent=5,separators=(',',':'))
 
-GEOCODE_BASE_URL = 'https://maps.googleapis.com/maps/api/geocode/json'
+GOOGLE_GEOCODE_BASE_URL = 'https://maps.googleapis.com/maps/api/geocode/json'
+OSM_GEOCODE_BASE_URL = 'http://nominatim.openstreetmap.org/'
 
-def GetGeocode(address,sensor='false', **args):
+def GetGeocode(address,sensor='false'):
 	"""Makes call to GoogleMaps API and returns 
 	   longitude,latitude for place name"""
-	args.update({
+
+	argsGOOGLE = {}
+	argsOSM = {}
+	argsGOOGLE.update({
 			'address': address,
 			'sensor' : sensor,
-		})
-	url = GEOCODE_BASE_URL + '?' + urllib.urlencode(args)
 
-	out = json.load(urllib.urlopen(url))['results'][0]['geometry']['location']
-	return [out['lng'],out['lat']] 
+		})
+	argsOSM.update({
+			'addressdetails': 0,
+			'polygon':0,
+			'q':address.replace(',','')
+
+		})
 	
-def GetPlaceName(lat,lon,sensor='false',**args):
+	urlGOOGLE = GOOGLE_GEOCODE_BASE_URL + '?' + urllib.urlencode(argsGOOGLE)
+	urlOSM = OSM_GEOCODE_BASE_URL + 'search?format=json'+'&' + urllib.urlencode(argsOSM)
+	
+	try:
+		out = json.load(urllib.urlopen(urlGOOGLE))['results'][0]['geometry']['location']
+		lon,lat = (out['lng'],out['lat'])
+	except IndexError:
+		pass
+	try:
+		out = json.load(urllib.urlopen(urlOSM))[0]
+		lon,lat = (float(out['lon']),float(out['lat']))
+	except IndexError:
+		raise IndexError
+
+	return [lon,lat] 
+	
+def GetPlaceName(lat,lon,zoom=16,sensor='false'):
 	"""Makes call to GoogleMaps API and returns 
 	   human readable address for lat,lon"""
-	args.update({
+	argsGOOGLE = {}
+	argsOSM = {}
+	argsGOOGLE.update({
 			'latlng': '%s,%s'%(lat,lon),
 			'sensor' : sensor,
 		})
-	url = GEOCODE_BASE_URL + '?' + urllib.urlencode(args)
+	argsOSM.update({
+			'lat': lat,
+			'lon': lon,
+			'zoom'  : 16,
+			'addressdetails': 0
+		})
 	
-	ct=0;count = 50;
-	while ct<=count:
+	urlGOOGLE = GOOGLE_GEOCODE_BASE_URL + '?' + urllib.urlencode(argsGOOGLE)
+	urlOSM = OSM_GEOCODE_BASE_URL + 'reverse?format=json'+'&' + urllib.urlencode(argsOSM)
+	
+	ct=0;count = 2;
+	while ct<count:
 		try:
-			out = json.loads(subprocess.check_output("curl --request GET '%s'"%url,stderr=open(os.devnull, 'w'),shell=True))['results'][0]['formatted_address']
+			out = json.loads(subprocess.check_output("curl --request GET '%s'"%urlGOOGLE,stderr=open(os.devnull, 'w'),shell=True))['results'][0]['formatted_address']
 			break		
 		except IndexError:
+			pass
+		try:
+			out = json.loads(subprocess.check_output("curl --request GET '%s'"%urlOSM,stderr=open(os.devnull, 'w'),shell=True))['display_name']
+			out = ' ,'.join(out.split(',')[0:2])
+			break		
+		except KeyError:
 			ct+=1
-			#print url
 			continue
-	if ct<=count:
+	
+	if ct<count:
 		return out
 	else:
 		raise IndexError
@@ -420,10 +459,11 @@ def ClusterGeoTag(place,n_clusters=5,radii=2,UsersUnique=False,timeWindow=60*15,
 
 		#Intialize with place name if GPS absent
 		if item['lon']==0:
+			continue
 			try:
 				item['lon'],item['lat'] = GetGeocode(item['place'])
 			except IndexError:
-				print ('GoogleMap did not return for %s'%item['place'])
+				#print ('GoogleMap did not return for %s'%item['place'])
 				continue
 
 		#Block all tweets outside place grid
@@ -481,6 +521,8 @@ def ClusterGeoTag(place,n_clusters=5,radii=2,UsersUnique=False,timeWindow=60*15,
 						if CatchImportantWord:
 							Cl_Vocab = []
 							for item in TweetCluster[cl]: Cl_Vocab +=filter(lambda x: len(x)>2 and x.isalnum() and x not in ['USERNAME','URL','PHONENUMBER','TIME','NUMBER'],TOKEN(item.split('\t _tweeted_ \t')[-1]));
+							if len(set(Cl_Vocab))==1:
+									continue
 							IMP_WORDS = [Counter(Cl_Vocab).most_common()[0][0],Counter(Cl_Vocab).most_common()[1][0]]
 							f.write('\n Words which mention top used word in cluster : %s\n'%IMP_WORDS)
 							counting = 0
@@ -496,15 +538,25 @@ def ClusterGeoTag(place,n_clusters=5,radii=2,UsersUnique=False,timeWindow=60*15,
 
 				#Plot on map
 				if visualize:
-					Map = smopy.Map((Grid[1],Grid[0],Grid[3],Grid[2]),z=zoom)
+					count = 0
+					while count<10:
+						try:
+							Map = smopy.Map((Grid[1],Grid[0],Grid[3],Grid[2]),z=zoom)
+							break
+						except:
+							count+=1
+					del count
+
 					draw = ImageDraw.Draw(Map.img)
 					for cl,cloc in enumerate(km.cluster_centers_):
+						if len(TweetClusterLOC[cl])==1:
+							continue
 						cx,cy = Map.to_pixels(cloc[0],cloc[1])	
 						draw.polygon([Map.to_pixels(item[0],item[1]) for item in TweetClusterLOC[cl]],outline='#0000FF')
 						try:
-							draw.text((cx,cy),'%s. '%cl+GetPlaceName(cloc[0],cloc[1]).split(',')[0],fill='#000000')
+							draw.text((cx,cy),'%s. '%cl+GetPlaceName(cloc[0],cloc[1]).split(',')[0]+'(%s)'%len(TweetClusterLOC[cl]),fill='#000000')
 						except IndexError:
-							draw.text((cx,cy),"%s. [Cluster]"%cl,fill='#000000')
+							draw.text((cx,cy),"%s. [Cluster]"%cl+'(%s)'%len(TweetClusterLOC[cl]),fill='#000000')
 					del draw
 					Map.save_png('retreiverData/ClusterCentersfrom%sto%s.png'%(localstart,localend))
 					Map.save_png('retreiverData/Img%s.png'%(((5-len(str(ImageCount)))*'0')+str(ImageCount)))
@@ -567,6 +619,8 @@ def ClusterGeoTag(place,n_clusters=5,radii=2,UsersUnique=False,timeWindow=60*15,
 			if CatchImportantWord:
 				Cl_Vocab = []
 				for item in TweetCluster[cl]: Cl_Vocab +=filter(lambda x: len(x)>2 and x.isalnum() and x not in ['USERNAME','URL','PHONENUMBER','TIME','NUMBER'],TOKEN(item.split('\t _tweeted_ \t')[-1]));
+				if len(set(Cl_Vocab))==1:
+					continue
 				IMP_WORDS = [Counter(Cl_Vocab).most_common()[0][0],Counter(Cl_Vocab).most_common()[1][0]]
 				f.write('\n Words which mention top used word in cluster : %s\n'%IMP_WORDS)
 				counting = 0
@@ -588,9 +642,9 @@ def ClusterGeoTag(place,n_clusters=5,radii=2,UsersUnique=False,timeWindow=60*15,
 			cx,cy = Map.to_pixels(cloc[0],cloc[1])	
 			draw.polygon([Map.to_pixels(item[0],item[1]) for item in TweetClusterLOC[cl]],outline='#0000FF')
 			try:
-				draw.text((cx,cy),GetPlaceName(cloc[0],cloc[1]).split(',')[0],fill='#000000')
+				draw.text((cx,cy),'%s. '%cl+GetPlaceName(cloc[0],cloc[1]).split(',')[0]+'(%s)'%len(TweetClusterLOC[cl]),fill='#000000')
 			except IndexError:
-				draw.text((cx,cy),"Cluster : %d"%cl,fill='#000000')
+				draw.text((cx,cy),"%s. [Cluster]"%cl+'(%s)'%len(TweetClusterLOC[cl]),fill='#000000')
 		del draw
 		Map.save_png('retreiverData/ClusterCentersfrom%sto%s.png'%(localstart,localend))
 		Map.save_png('retreiverData/Img%s.png'%(((5-len(str(ImageCount)))*'0')+str(ImageCount)))
@@ -734,3 +788,4 @@ if __name__=='__main__':
 		CreateHeatMap(sys.argv[2])
 	elif sys.argv[1]=='cluster':
 		ClusterGeoTag(sys.argv[2])
+#ffmpeg -f image2 -r 1/5 -i image%05d.png -vcodec mpeg4 -y movie.mp4

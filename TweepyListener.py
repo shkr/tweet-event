@@ -77,7 +77,7 @@ class Listener(StreamListener):
         with conn:
 
             try:
-                if tweet['coordinates']!=None:
+                if tweet['coordinates']['coordinates']!=None:
                      lat =  float(tweet['coordinates']['coordinates'][1])
                      lon =  float(tweet['coordinates']['coordinates'][0])
                 else:
