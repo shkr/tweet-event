@@ -1,7 +1,7 @@
 from TweepyListener import Listener
 import time, tweepy, sys
 from t_auth import *
-from geocode import locationbox
+from utils import locationbox,Placenames
 
 ## user_authorization
 #u_auth     = tweepy.auth.BasicAuthHandler(**twitter_account)
@@ -21,7 +21,8 @@ def StreamLocation(loc,verbose):
         for citygrid in locationbox.values():
             box+=citygrid
     else:
-        print ("Location not known ; How about these ones %s ?"%locationbox.keys())
+        raise ValueError("Location not known ; How about these ones %s ?"%locationbox.keys())
+
     listen = Listener(arg=loc,verbose=verbose)
     stream = tweepy.Stream(auth, listen)
 
@@ -30,13 +31,41 @@ def StreamLocation(loc,verbose):
     
     stream.filter(locations = box)
     
+def StreamTrack(loc,verbose):
+
+    if loc in Placenames.keys():
+        words = Placenames[loc]
+    else:
+        raise ValueError("Location not known ; How about these ones %s ?"%Placenames.keys())
+    
+    listen = Listener(arg=loc,prefix='placename',verbose=verbose)
+    stream = tweepy.Stream(auth, listen)
+
+    print "Streaming started using %s location from Placenames..." % (loc)
+
+    
+    stream.filter(track = words)
 
 if __name__ == '__main__':
-    if sys.argv[1] in locationbox.keys() or sys.argv[1]=='all':
-        if len(sys.argv)>2:
-            verbose = True if '-v' in sys.argv[2:] else False
+    
+    if sys.argv[1].split('-')[0]=='Location':
+        if sys.argv[1].split('-')[1] in locationbox.keys() or sys.argv[1].split('-')[1]=='all':
+            if len(sys.argv)>2:
+                verbose = True if '-v' in sys.argv[2:] else False
+            else:
+                verbose=False    
+            StreamLocation(loc=sys.argv[1].split('-')[1],verbose=verbose)
         else:
-            verbose=False    
-        StreamLocation(loc=sys.argv[1],verbose=verbose)
+            raise KeyError("Geocode for location not known, try one of these <all> or %s"%locationbox.keys())
+    
+    elif sys.argv[1].split('-')[0]=='Track':
+        if sys.argv[1].split('-')[1] in Placenames.keys():
+            if len(sys.argv)>2:
+                verbose = True if '-v' in sys.argv[2:] else False
+            else:
+                verbose=False    
+            StreamTrack(loc=sys.argv[1].split('-')[1],verbose=verbose)
+        else:
+            raise KeyError("location not found in track dictionary, try one of these %s"%Placenames.keys())
     else:
-        raise KeyError("Geocode for location not known, try one of these <all> or %s"%locationbox.keys())
+        print 'valid arguments are ex:python Streaming.py Location-Boston, python streaming.py Track-Boston'
