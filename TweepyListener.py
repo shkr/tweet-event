@@ -31,8 +31,10 @@ class Listener(StreamListener):
 
             #ErrorTable
             self.err_table = prefix+'ERROR_LOG'
+            errcurr = conn.cursor()
             #Table definition
-            #self.errcur.execute("CREATE TABLE IF NOT EXISTS ERROR_LOG (Id INT PRIMARY KEY AUTO_INCREMENT,status_id VARCHAR(50),type VARCHAR(50),time BIGINT)")
+            self.errcur.execute("CREATE TABLE IF NOT EXISTS %sTable (Id INT PRIMARY KEY AUTO_INCREMENT,status_id VARCHAR(50),type VARCHAR(50),time BIGINT)"%self.err_table)
+            errcurr.close()
 
     def verboseprint(self,*args):
         if self.verbose==True:
@@ -77,7 +79,7 @@ class Listener(StreamListener):
         with conn:
 
             try:
-                if tweet['coordinates']['coordinates']!=None:
+                if tweet['coordinates']!=None:
                      lat =  float(tweet['coordinates']['coordinates'][1])
                      lon =  float(tweet['coordinates']['coordinates'][0])
                 else:
@@ -115,7 +117,7 @@ class Listener(StreamListener):
 
                 self.counter += 1    
 
-            except KeyError:
+            except TypeError:
                 raise KeyError(str(tweet))
                 pass
             
@@ -128,7 +130,7 @@ class Listener(StreamListener):
         #ErrorCursor
         errout = conn.cursor()
         with conn:
-            errout.execute("INSERT INTO ERROR_LOG(status_id, type,time) VALUES('%s','ON_DELETE','%d')"%(str(status_id),int(time.time())))
+            errout.execute("INSERT INTO %sTable(status_id, type,time) VALUES('%s','ON_DELETE','%d')"%(self.err_table,str(status_id),int(time.time())))
         return
 
     def on_limit(self, track):
@@ -137,7 +139,7 @@ class Listener(StreamListener):
         #ErrorCursor
         errout = conn.cursor()
         with conn:
-            errout.execute("INSERT INTO ERROR_LOG(status_id, type, time) VALUES('%s','ON_LIMIT','%d')"%(str(track),int(time.time())))
+            errout.execute("INSERT INTO %sTable(status_id, type, time) VALUES('%s','ON_LIMIT','%d')"%(self.err_table,str(track),int(time.time())))
             return
 
     def on_error(self, status_code):
@@ -146,7 +148,7 @@ class Listener(StreamListener):
         #ErrorCursor
         errout = conn.cursor()
         with conn:
-            errout.execute("INSERT INTO ERROR_LOG(status_id, type, time) VALUES('%s','ERROR_CODE','%d')"%(str(status_code),int(time.time())))
+            errout.execute("INSERT INTO %sTable(status_id, type, time) VALUES('%s','ERROR_CODE','%d')"%(self.err_table,str(status_code),int(time.time())))
             return False
 
     def on_timeout(self):
@@ -155,7 +157,7 @@ class Listener(StreamListener):
         #ErrorCursor
         errout = conn.cursor()
         with conn:
-            errout.execute("INSERT INTO ERROR_LOG(status_id, type, time) VALUES('SLEEP90','TIME_OUT','%d')"%int(time.time()))
+            errout.execute("INSERT INTO %sTable(status_id, type, time) VALUES('SLEEP90','TIME_OUT','%d')"%(self.err_table,int(time.time())))
             time.sleep(90)
             return 
 
@@ -166,5 +168,5 @@ class Listener(StreamListener):
         errout = conn.cursor()
         
         with conn:
-            errout.execute("INSERT INTO ERROR_LOG(status_id, type, time) VALUES('%s','WARNING_MSG','%d')"%(warning_msg,int(time.time())))
+            errout.execute("INSERT INTO %sTable(status_id, type, time) VALUES('%s','WARNING_MSG','%d')"%(self.err_table,warning_msg,int(time.time())))
             return
