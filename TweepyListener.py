@@ -86,7 +86,11 @@ class Listener(StreamListener):
                  lat = 0
                  lon = 0
 
-            place      = tweet['place']['full_name']
+            if tweet['place']!=None:
+                place      = tweet['place']['full_name']
+            else:
+                place      = 'Unknown'
+                
             created_at = tweet['created_at']
             hashtags = "%20".join([ item['text'] for item in tweet['entities']['hashtags']])
             urls = "%20".join([ item['url'] for item in tweet['entities']['urls']])
