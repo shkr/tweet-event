@@ -9,7 +9,7 @@ import sys
 
 class Listener(StreamListener):
 
-    def __init__(self,verbose,arg='',prefix = 'streamer'):
+    def __init__(self,verbose,arg='',prefix = 'streamer2'):
         
         if arg=='':
             raise ValueError("Please check Streaming argument, if it is empty")
@@ -90,7 +90,7 @@ class Listener(StreamListener):
                 place      = tweet['place']['full_name']
             else:
                 place      = 'Unknown'
-                
+
             created_at = tweet['created_at']
             hashtags = "%20".join([ item['text'] for item in tweet['entities']['hashtags']])
             urls = "%20".join([ item['url'] for item in tweet['entities']['urls']])
