@@ -115,7 +115,8 @@ class Listener(StreamListener):
 
                 self.counter += 1    
 
-            except:
+            except KeyError:
+                raise KeyError(str(tweet))
                 pass
             
             return
