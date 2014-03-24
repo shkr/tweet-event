@@ -33,7 +33,7 @@ class Listener(StreamListener):
             self.err_table = prefix+'ERROR_LOG'
             errcurr = conn.cursor()
             #Table definition
-            self.errcur.execute("CREATE TABLE IF NOT EXISTS %sTable (Id INT PRIMARY KEY AUTO_INCREMENT,status_id VARCHAR(50),type VARCHAR(50),time BIGINT)"%self.err_table)
+            errcur.execute("CREATE TABLE IF NOT EXISTS %sTable (Id INT PRIMARY KEY AUTO_INCREMENT,status_id VARCHAR(50),type VARCHAR(50),time BIGINT)"%self.err_table)
             errcurr.close()
 
     def verboseprint(self,*args):
