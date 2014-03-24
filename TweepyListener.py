@@ -78,49 +78,45 @@ class Listener(StreamListener):
         
         with conn:
 
-            try:
-                if tweet['coordinates']!=None:
-                     lat =  float(tweet['coordinates']['coordinates'][1])
-                     lon =  float(tweet['coordinates']['coordinates'][0])
-                else:
-                     lat = 0
-                     lon = 0
-
-                place      = tweet['place']['full_name']
-                created_at = tweet['created_at']
-                hashtags = "%20".join([ item['text'] for item in tweet['entities']['hashtags']])
-                urls = "%20".join([ item['url'] for item in tweet['entities']['urls']])
-                user_mentions = "%20".join([ item['id_str']+"%40"+item["screen_name"] for item in tweet['entities']['user_mentions']])
-                media = "%20".join([ item['id_str']+"%40"+item["media_url"] for item in tweet['entities']['media']]) if 'media' in tweet['entities'].keys() else ''
-                favorite_count = tweet["favorite_count"] if tweet["favorite_count"]!=None else 0
-                filter_level = tweet["filter_level"] if 'filter_level' in tweet.keys() else ''
-                tid = tweet['id']
-                in_reply_to_screen_name = tweet["in_reply_to_screen_name"] if tweet["in_reply_to_screen_name"]!=None else 0
-                in_reply_to_status_id = tweet["in_reply_to_status_id"] if tweet["in_reply_to_status_id"]!=None else 0
-                in_reply_to_user_id = tweet["in_reply_to_user_id"] if tweet["in_reply_to_user_id"]!=None else 0
-                retweet_count = tweet["retweet_count"] if tweet["retweet_count"]!=None else 0
-                source = tweet["source"].replace("'","\\'").replace('"','\\"')
-                text = tweet["text"].replace('\\','/b/').replace("'","\\'").replace('"','\\"')
-
-                user_id = tweet["user"]["id"]
-                screen_name = tweet["user"]["screen_name"].replace('\\','/b/').replace("'","\\'").replace('"','\\"')
-                user_location = tweet["user"]["location"]
-                retweeted_status_id = tweet["retweeted_status"]["id"] if "retweeted_status" in tweet.keys() else 0
-                query = """INSERT INTO %sTable(lat,lon,place,created_at,hashtags,urls,user_mentions,media,favorite_count,filter_level,tid,in_reply_to_screen_name,in_reply_to_status_id,in_reply_to_user_id,retweet_count,source,text,user_id,screen_name,user_location,retweeted_status_id) VALUES ("%f","%f","%s","%s","%s","%s","%s","%s","%d","%s","%d","%s","%d","%d","%d","%s","%s","%d","%s","%s","%d")"""%(self.table,lat,lon,place,created_at,hashtags,urls,user_mentions,media,favorite_count,filter_level,tid,in_reply_to_screen_name,in_reply_to_status_id,in_reply_to_user_id,retweet_count,source,text,user_id,screen_name,user_location,retweeted_status_id)
-                
-                self.verboseprint(query)
-                
-                try:
-                    curr.execute(query)
-                except:
-                    print "Unexpected error:", sys.exc_info()[0]
-
-                self.counter += 1    
-
-            except TypeError:
-                raise KeyError(str(tweet))
-                pass
             
+            if tweet['coordinates']!=None:
+                 lat =  float(tweet['coordinates']['coordinates'][1])
+                 lon =  float(tweet['coordinates']['coordinates'][0])
+            else:
+                 lat = 0
+                 lon = 0
+
+            place      = tweet['place']['full_name']
+            created_at = tweet['created_at']
+            hashtags = "%20".join([ item['text'] for item in tweet['entities']['hashtags']])
+            urls = "%20".join([ item['url'] for item in tweet['entities']['urls']])
+            user_mentions = "%20".join([ item['id_str']+"%40"+item["screen_name"] for item in tweet['entities']['user_mentions']])
+            media = "%20".join([ item['id_str']+"%40"+item["media_url"] for item in tweet['entities']['media']]) if 'media' in tweet['entities'].keys() else ''
+            favorite_count = tweet["favorite_count"] if tweet["favorite_count"]!=None else 0
+            filter_level = tweet["filter_level"] if 'filter_level' in tweet.keys() else ''
+            tid = tweet['id']
+            in_reply_to_screen_name = tweet["in_reply_to_screen_name"] if tweet["in_reply_to_screen_name"]!=None else 0
+            in_reply_to_status_id = tweet["in_reply_to_status_id"] if tweet["in_reply_to_status_id"]!=None else 0
+            in_reply_to_user_id = tweet["in_reply_to_user_id"] if tweet["in_reply_to_user_id"]!=None else 0
+            retweet_count = tweet["retweet_count"] if tweet["retweet_count"]!=None else 0
+            source = tweet["source"].replace("'","\\'").replace('"','\\"')
+            text = tweet["text"].replace('\\','/b/').replace("'","\\'").replace('"','\\"')
+
+            user_id = tweet["user"]["id"]
+            screen_name = tweet["user"]["screen_name"].replace('\\','/b/').replace("'","\\'").replace('"','\\"')
+            user_location = tweet["user"]["location"]
+            retweeted_status_id = tweet["retweeted_status"]["id"] if "retweeted_status" in tweet.keys() else 0
+            query = """INSERT INTO %sTable(lat,lon,place,created_at,hashtags,urls,user_mentions,media,favorite_count,filter_level,tid,in_reply_to_screen_name,in_reply_to_status_id,in_reply_to_user_id,retweet_count,source,text,user_id,screen_name,user_location,retweeted_status_id) VALUES ("%f","%f","%s","%s","%s","%s","%s","%s","%d","%s","%d","%s","%d","%d","%d","%s","%s","%d","%s","%s","%d")"""%(self.table,lat,lon,place,created_at,hashtags,urls,user_mentions,media,favorite_count,filter_level,tid,in_reply_to_screen_name,in_reply_to_status_id,in_reply_to_user_id,retweet_count,source,text,user_id,screen_name,user_location,retweeted_status_id)
+            
+            self.verboseprint(query)
+            
+            try:
+                curr.execute(query)
+            except:
+                print "Unexpected error:", sys.exc_info()[0]
+
+            self.counter += 1    
+
             return
 
     def on_delete(self, status_id, user_id):
