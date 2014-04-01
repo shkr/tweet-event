@@ -1,23 +1,54 @@
 import time
 from tweetokenize import Tokenizer
 from utils import gmt_to_local, local_to_gmt
-import re 
+import re
+import cPickle
+from collections import Counter
 
 def multiple_replace(dict, text):
   # Create a regular expression  from the dictionary keys
   regex = re.compile("(%s)" % "|".join(map(re.escape, dict.keys())))
 
   # For each match, look-up corresponding value in dictionary
-  return regex.sub(lambda mo: dict[mo.string[mo.start():mo.end()]], text) 
+  return regex.sub(lambda mo: dict[mo.string[mo.start():mo.end()]], text)
 
+def is_sublist(a, b):
+  if a.size == 0: return True
+  if b.size == 0: return False
+  return (b[:a.size] == a).all() or is_sublist(a, b[1:])
+
+def get_vocabulary(tweet_text,tokenize=None,counter=True):
+  tokenize  = T_Tokenizer(lowercase=False,normalize=2,ignorestopwords=True).tokenize if tokenize==None else tokenize
+  #Build vocab
+  vocab = []
+  for text in tweet_text: vocab  += list(set(tokenize(text)));
+  for item in vocab:
+    if item.lower()=='boston' or item.lower()=='cambridge':
+      vocab.remove(item)
+  return vocab if counter==False else Counter(vocab)
 
 class T_Tokenizer:
 
-	def __init__(self,lowercase=False,normalize=2,ignorestopwords=True):
-		self.method = Tokenizer(lowercase=lowercase,normalize=normalize,ignorestopwords=ignorestopwords).tokenize
+  def __init__(self,lowercase=False,normalize=2,ignorestopwords=True,phrases='Phrases.cPickle'):
 
-	def tokenize(self,text):
-		return filter(lambda x: x is not None,[ i if (len(i)>1 and i[0]!='@' and i not in ['USERNAME','URL','PHONENUMBER','TIME','NUMBER']) else None for i in self.method(re.sub('#','',text))])
+    self.method = Tokenizer(lowercase=lowercase,normalize=normalize,ignorestopwords=ignorestopwords).tokenize
+    self.Phrases= cPickle.load(open(phrases))
+
+  def tokenize(self,text):
+    ans = filter(lambda x: x is not None,[ i if (len(i)>1 and i[0]!='@' and i not in ['USERNAME','URL','PHONENUMBER','TIME','NUMBER'])\
+                   else None for i in self.method(re.sub('#','',text))])
+    ans = self.make_phrases(' '.join(ans))
+
+    return ans
+
+  def make_phrases(self,text,threshold=0):
+
+    for phrase,value in self.Phrases.items():
+      if phrase in text and value>threshold:
+        text = text.replace(phrase,''.join(phrase.split()))
+
+    return text.split()
+
 
 class SearchTopic:
 

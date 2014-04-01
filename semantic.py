@@ -4,18 +4,22 @@ from retreiver import TweetSnap
 from Clustering import GMM_clustering
 from tweetokenize import Tokenizer
 from collections import Counter
-from SearchUtils import T_Tokenizer, multiple_replace
+from SearchUtils import T_Tokenizer, multiple_replace, get_vocabulary
 from utils import GetPlaceName, location
+from visualization import GeographicalEntropy as Locality
 import math
 import folium
+import matplotlib.pyplot as plt
 
-
-def get_vocabulary(tweet_text,tokenize=None,count_unique_items=False):
+def get_vocabulary(tweet_text,tokenize=None,counter=True):
 	tokenize  = T_Tokenizer(lowercase=False,normalize=2,ignorestopwords=True).tokenize if tokenize==None else tokenize
 	#Build vocab
 	vocab = []
-	for text in tweet_text: vocab  += tokenize(text) if count_unique_items==False else list(set(tokenize(text)));
-	return Counter(vocab)
+	for text in tweet_text: vocab  += list(set(tokenize(text)));
+	for item in vocab:
+		if item.lower()=='boston' or item.lower()=='cambridge':
+			vocab.remove(item)
+	return vocab if counter==False else Counter(vocab)
 
 class Base_Buzz:
 
@@ -281,5 +285,201 @@ class KModesKMeans(Base_Buzz):
 class word2vector(Base_Buzz):
 	pass
 
-class semantichashing(Base_Buzz):
-	pass
+from visualization import Count
+from visualization import GeographicalEntropy as Locality
+from scipy.stats import expon
+import time
+import numpy as np
+
+class NewsWorthyWords:
+
+	def __init__(self,db,timeWindow=60*10,**kwargs):
+
+		print "COLLECTING TWEETS...."
+		self.TS = TweetSnap(db=db,timeWindow = timeWindow,Placename2Geocode=False)
+		print "COLLECTION OVER...."
+
+		#Variables
+		self.SnapStack = []
+		self.Candidates= {}
+		self.Volume		= []
+
+		#Constants
+		self.delta    				 = 1.5
+		self.enoughSamples     = 15.0
+		self.SnapLim  = 6
+		#Set TIME_FRAME
+		self.SetStart(kwargs.get("TIME_START",time.gmtime(0)))
+
+	def SetStart(self,TIME_START):
+		if isinstance(TIME_START,str):
+			TIME_START  = time.gmtime(time.mktime(time.strptime(TIME_START,"%d %b %H:%M %Z %Y")))
+		TIME_DIFF   = time.mktime(TIME_START)  - time.mktime(self.TS.time_start)
+		if TIME_DIFF>0:
+			self.TS.move_on(TIME_DIFF-timeWindow)
+
+	def run(self):
+
+		while 1:
+
+			#Update SnapStack
+			if len(self.SnapStack)==self.SnapLim:
+				self.SnapStack = self.SnapStack[1:]
+				self.Volume    = self.Volume[1:]
+			self.SnapStack.append(self.TS.next())
+			self.Volume.append(Count(self.SnapStack[-1]))
+
+			#Update Candidates origin snap as timeWindow has shifted right
+			for key,val in self.Candidates.items():
+				if val==-self.SnapLim:
+					self.Candidates.pop(key)
+					print 'This %s word has been removed because it never received enough samples'%key
+				else:
+					self.Candidates[key]=val-1
+
+
+			print 'Latest timeWindow',self.SnapStack[-1]['TimeWindow']
+			#Algorithm
+			print 'Print looking for new events which happened in this timeWindow'
+			self.FindNewEvent()
+			print 'Print confirming old/new candidate events which have not been published'
+			self.ConfirmEvent()
+
+
+			if self.Candidates.keys() !=[]: print 'EventCandidates:'; print self.Candidates.keys();
+
+			break
+
+	def TotalVolume(self,word,Volume):
+
+		total = 0.0
+		k		 = 0
+
+		while k < len(Volume):
+			if word in Volume[k].keys():
+				total += Volume[k][word]
+			k+=1
+
+		return total if total!=0 else 1
+
+
+
+	def FindNewEvent(self):
+
+		for word,count in self.Volume[-1].items():
+
+				#Is word count gaussian noise or signal ?
+				wordHistory = [float(vol[word]) for vol in self.Volume[:-1] if word in vol.keys() ]
+				mean        =  np.mean(wordHistory) if len(wordHistory)>0 else 1
+				var				 =  np.std(wordHistory) if len(wordHistory)>=5 else 1
+
+				deviation = (count - mean)/(2*var)
+
+				if deviation>1.0:
+					print 'Just look at %s word with deviation %f'%(word,deviation)
+
+				if deviation>=self.delta:
+
+					print 'This %s is not gaussian noise'%word
+					if word not in self.Candidates.keys() or (self.Volume[self.Candidates[word]][word]<vol):
+						self.Candidates[word] = -1
+
+	def ConfirmEvent(self):
+
+		for word,no in self.Candidates.items():
+
+			wordHistory = [float(vol.get(word,0.0)) for vol in self.Volume[no:]]
+			print 'Confirming candidate : %s at time = %s with samples=%d and Snapno=%d'%(word,self.SnapStack[no]['TimeWindow'][0],sum(wordHistory),no)
+			if sum(wordHistory)>=self.enoughSamples:
+				print 'This %s word has enough samples from tweets to fit for Poisson'%(word)
+				Lambda,flag = self.FitPoissonDistribution(word,no)
+				if flag in ['1','y','yes']:
+						print 'This %s word count resembles poisson distribution with lambda=%f'%(word,Lambda)
+						self.ReportEventQueue(word,no)
+						self.Candidates.pop(word)
+				else:
+						print 'This %s word count does not resembles poisson distribution with lambda=%s'%(word,Lambda)
+
+	def FitPoissonDistribution(self,word,no):
+
+		tokenize  = T_Tokenizer().tokenize
+
+		k = no
+		Times = []
+
+		ApproxTimes = []
+
+		wordHistory = [vol.get(word,0) for vol in self.Volume[no:]]
+
+		#Store all tweet_times with word in current snap and known history
+		while k<0:
+
+			approx = time.mktime(time.strptime(self.SnapStack[k]['TimeWindow'][0]+'2014EDT',"%d%b%HHR%MMN%Y%Z"))
+			count  = self.Volume[k].get(word,0)
+			ApproxTimes+=[approx]*count
+
+			for order,text in enumerate(self.SnapStack[k]['TEXT']):
+				if word in tokenize(text):
+					Times.append(\
+									time.mktime(time.strptime(self.SnapStack[k]['CREATED_AT'][order],"%d %b %H:%M:%S %Y")))
+			k+=1
+
+	  #Calculate time-intervals
+		TimeIntervals = [Time-min(Times) for Time in Times]
+		ApproxTimeIntervals = sorted([ approx-min(ApproxTimes) for approx in ApproxTimes])
+		TimeIntervals.sort()
+		print 'Have a look at TimeIntervals(1) and ApproxTimeIntervals(2) and LogLikelihood(3)'
+		print '(1)',TimeIntervals
+		print '(2)',ApproxTimeIntervals
+
+		ApproxTimeIntervals = Counter(ApproxTimeIntervals)
+
+		#Calculate ML_Lmbda and Variance for given samples
+		_lmbda      = float(len(TimeIntervals))/sum(TimeIntervals)
+		_R2         = 1/_lmbda**2
+		#MaxLogLikelihood
+		_LgLd 			= -1*sum([np.log(_lmbda*np.exp(-_lmbda*x)) for x in TimeIntervals])
+		print '(3)',_LgLd
+
+		#Simulate a expon_RV with fitted _lmbda
+		_rv         = expon(scale=1/_lmbda)
+
+		#Plot pdf of counts from _rv and known
+		fig = plt.figure()
+		ax  = fig.add_subplot(111)
+		ax.plot(sorted(ApproxTimeIntervals.keys()),[_rv.cdf(x+600)-_rv.cdf(x) for x in sorted(ApproxTimeIntervals.keys())],'r-',label='fitted')
+		ax.plot(sorted(ApproxTimeIntervals.keys()),[float(ApproxTimeIntervals[key])/sum(wordHistory) for key in sorted(ApproxTimeIntervals.keys()) ],'b-'\
+						,label='empirical estimate')
+
+		plt.legend()
+
+		#save figure
+		fig.savefig('%s.png'%word)
+
+		gmm  = GMM_clustering(components=range(4,15))
+		gmm.Snap = self.SnapStack[no]
+		gmm.build_clusters()
+
+		flag = raw_input("Fitted curve for %s stored should flag=1 or not with lambda=%f and locality=%f"%(word,_lmbda,Locality(self.SnapStack[no],gmm.labels,word)))
+		plt.close(fig)
+		return [_lmbda,flag]
+
+	def ReportEventQueue(self,word,no):
+
+		#Find clusters at start point of event
+		gmm  = GMM_clustering(components=range(4,15))
+		gmm.Snap = self.SnapStack[no]
+		gmm.build_clusters()
+		Labels = []
+		tokenize  = T_Tokenizer().tokenize
+		for k,text in enumerate(gmm.Snap['TEXT']):
+			if word in tokenize(text):
+				Labels.append(gmm.labels[k])
+		Labels = Counter(Labels)
+		#Find cluster where word was most common
+		StarLabel = Labels.most_common(1)[0][0]
+
+		#Print a tweet from that cluster
+		for k,text in enumerate(gmm.Snap['TEXT']):
+			if gmm.labels[k] == StarLabel and word in tokenize(text):
+				print text

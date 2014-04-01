@@ -16,7 +16,7 @@ def gmt_to_local(_time,make_string=False,format='%d %b %H:%M:%S %Y'):
 	else:
 		return time.strftime(format,_time)
 
-def local_to_gmt(_time,make_string=False,TZ='EST'):
+def local_to_gmt(_time,make_string=False,TZ='EDT'):
 		_time  = time.gmtime(time.mktime(time.strptime(_time.replace('+0000',TZ),"%b %d %H:%M:%S %Z %Y")))
 
 		if not make_string:
@@ -33,7 +33,7 @@ location = {'Delhi':dict(latitude=28.6353080,longitude= 77.2249600,radius=25),'M
 locationbox = {'Delhi':[76.8396999,28.4010669,77.3418145999999,28.88981589],'Mumbai':[72.775908899,18.8928676,72.9864994,19.2716338],'NYC':[-74.2590879,40.495996,-73.700272,40.9152555],
             'Boston':[ -71.191113,42.22788,-70.92320099999999,42.3988669],'SanFrancisco':[-122.75,36.8,-121.75,37.8],'London':[-0.3514684,51.38494009999999,0.148271,51.6723432],'LosAngeles':[-118.668176,33.7036918,-118.155289,34.337306],'Toronto':[-79.639219,43.58108470000001,-79.1161932,43.855458],'SanDiego':[-117.2821665,32.534856,-116.90816,33.114249],'Houston':[-95.78808690000001,29.523624,-95.01449599999999,30.110732]}
 
-Placenames = { 'Boston':['Boston','Cambridge','Brookline','Somerville','Quincy'] }
+Placenames = { 'Boston':['Boston','Cambridge','Quincy','Somerville','Newton','Weymoth','Revere','Medford','Chelsea','Everett','Brookline','Braintree','Milton','Dedham','Watertown','Winthrop','Milton','Arlington']}
 
 GOOGLE_GEOCODE_BASE_URL = 'https://maps.googleapis.com/maps/api/geocode/json'
 OSM_GEOCODE_BASE_URL = 'http://nominatim.openstreetmap.org/'

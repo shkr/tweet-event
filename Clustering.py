@@ -1,10 +1,12 @@
 #-*-encoding:utf-8-*-
 from sklearn import cluster
 from utils import GetPlaceName, GetGeocode, locationbox, latlon2km
+from SearchUtils import T_Tokenizer
 import smopy
 import time
 import numpy as np
 import json
+import math
 import networkx as nx
 from collections import Counter
 import itertools
@@ -23,6 +25,7 @@ class Placename_clustering:
 		self.SnapIter = SnapIter
 		self.Snap  = None
 		self.visualize = visualize
+		self.labels = None
 
 	def build_clusters(self):
 
@@ -30,6 +33,19 @@ class Placename_clustering:
 
 	def next(self):
 		self.Snap = self.SnapIter.next()
+
+	def entropy(self,word):
+
+		if self.labels==None:
+			raise ValueError('Please execute self.build_clusters() before calculating entropy(word)')
+
+		word_labels = [ self.labels[i] for i,text in enumerate(self.Snap['TEXT']) if word in text]
+		WordLabelDistribution = Counter(word_labels)
+		print WordLabelDistribution
+		NoOfText = sum(WordLabelDistribution.values())
+		WordEntropy = sum([ -(nlabelText/NoOfText)*log(nlabelText/NoOfText) for nlabelText in Counter.values() ])
+
+		return WordEntropy
 
 	@staticmethod
 	def run(X,place_names,visualize,Grid,name):
@@ -85,7 +101,7 @@ class Placename_clustering:
 
 class GMM_clustering:
 
-	def __init__(self,SnapIter,components=5,visualize=False):
+	def __init__(self,SnapIter=None,components=range(5,20),visualize=False):
 
 		self.SnapIter = SnapIter
 		self.Snap  = None
@@ -94,13 +110,26 @@ class GMM_clustering:
 
 	def build_clusters(self):
 
-		self.labels = GMM_clustering.run(np.vstack(self.Snap['LOC']),components = self.components,visualize=self.visualize,Grid=self.SnapIter.Grid,name=self.Snap['TimeWindow'])
+		self.labels = GMM_clustering.run(np.vstack(self.Snap['LOC']),components = self.components,visualize=self.visualize,Grid=self.SnapIter.Grid if self.visualize==True else None,name=self.Snap['TimeWindow'],text=self.Snap['TEXT'])
 
 	def next(self):
 		self.Snap = self.SnapIter.next()
 
+
+	def entropy(self,word):
+
+		if self.labels==None:
+			raise ValueError('Please execute self.build_clusters() before calculating entropy(word)')
+
+		word_labels = [ self.labels[i] for i,text in enumerate(self.Snap['TEXT']) if word in text]
+		WordLabelDistribution = Counter(word_labels)
+		NoOfText = float(sum(WordLabelDistribution.values()))
+		WordEntropy = sum([ -(nlabelText/NoOfText)*math.log(nlabelText/NoOfText,2) for nlabelText in WordLabelDistribution.values() ])
+		print WordLabelDistribution
+		return ''#WordEntropy
+
 	@staticmethod
-	def run(X,components,visualize,Grid,name):
+	def run(X,components,visualize,Grid,name,text):
 
 		#Pre-processing function
 		scaler = preprocessing.StandardScaler().fit(X)
@@ -144,30 +173,31 @@ class GMM_clustering:
 			visual_patterns = ['ob','og','or','oc','om','oy','ok','ow','xb','xg','xr','xc','xm','xy','xk','xw']
 
 			fig = plt.figure(figsize=(40,20))
-			gs  = gridspec.GridSpec(1,2,width_ratios=[2,3])
-			spl = plt.subplot(gs[0])
-
-			bic = np.array(bic)
-			bars = []
-
-			for i, (cv_type, color) in enumerate(zip(cv_types, color_iter)):
-				xpos = np.array(n_components_range) + .2 * (i - 2)
-				bars.append(plt.bar(xpos, bic[i * len(n_components_range):
-				                             (i + 1) * len(n_components_range)],
-				                   width=.2, color=color))
-
-			plt.xticks(n_components_range)
-			plt.ylim([bic.min() * 1.01 - .01 * bic.max(), bic.max()])
-			plt.title('BIC score per model')
-			xpos = np.mod(bic.argmin(), len(n_components_range)) + .65 +\
-			    .2 * np.floor(bic.argmin() / len(n_components_range))
-			plt.text(xpos, bic.min() * 0.97 + .03 * bic.max(), '*', fontsize=30)
-			spl.set_xlabel('Number of components')
-			spl.legend([b[0] for b in bars], cv_types)
+			#gs  = gridspec.GridSpec(1,2,width_ratios=[2,3])
+			# spl = plt.subplot(gs[0])
+			#
+			# bic = np.array(bic)
+			# bars = []
+			#
+			# for i, (cv_type, color) in enumerate(zip(cv_types, color_iter)):
+			# 	xpos = np.array(n_components_range) + .2 * (i - 2)
+			# 	bars.append(plt.bar(xpos, bic[i * len(n_components_range):
+			# 	                             (i + 1) * len(n_components_range)],
+			# 	                   width=.2, color=color))
+			#
+			# plt.xticks(n_components_range)
+			# plt.ylim([bic.min() * 1.01 - .01 * bic.max(), bic.max()])
+			# plt.title('BIC score per model')
+			# xpos = np.mod(bic.argmin(), len(n_components_range)) + .65 +\
+			#     .2 * np.floor(bic.argmin() / len(n_components_range))
+			# plt.text(xpos, bic.min() * 0.97 + .03 * bic.max(), '*', fontsize=30)
+			# spl.set_xlabel('Number of components')
+			# spl.legend([b[0] for b in bars], cv_types)
 
 			#Plot best result of GMM
 			map_ = smopy.Map([Grid[1],Grid[0],Grid[3],Grid[2]],z=13)
-			mpl  = plt.subplot(gs[1])
+			#mpl  = plt.subplot(gs[1])
+			mpl  = fig.add_subplot(111)
 			mpl.set_xticks([])
 			mpl.set_yticks([])
 			mpl.grid(False)
@@ -178,11 +208,18 @@ class GMM_clustering:
 			mpl  = map_.show_mpl(mpl)
 			printed = []
 			ClusterSize = Counter(labels)
+			tokenize  = T_Tokenizer().tokenize
 
 			for k in range(0,len(X)):
 
 				x,y = map_.to_pixels(X[k][0],X[k][1])
-				mpl.plot(x,y,'%s'%visual_patterns[labels[k]])
+				#mpl.plot(x,y,'%s'%visual_patterns[labels[k]])
+				if 'people' in tokenize(text[k]):
+					mpl.text(x, y, 'P', fontsize=20,color=visual_patterns[labels[k]][1])
+					#mpl.plot(x,y,'%s'%visual_patterns[labels[k]])
+				#if 'Boston' in tokenize(text[k]):
+				#	mpl.text(x, y, 'Boston', fontsize=25,color='b')
+
 				if labels[k] not in printed:
 					mpl.text(x, y, '%d'%ClusterSize[labels[k]], fontsize=8,color=visual_patterns[labels[k]][1])
 					printed.append(labels[k])

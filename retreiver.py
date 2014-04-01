@@ -16,10 +16,14 @@ from sklearn import cluster
 
 class TweetIterator:
 
-	def __init__(self,place='Boston',collect_items=[],useall=False):
+	def __init__(self,db,place='Boston',collect_items=[],useall=False):
 		self.place = place
 		self.useall = useall
-
+		#Database : db
+		#1. streamer
+		#2. streamer2
+		#3. placename
+		self.db 	= db
 		conn = MySQLdb.connect(**mysql_auth)
 		self.curr = conn.cursor()#(MySQLdb.cursors.SSCursor)
 		Grid          = locationbox[self.place]
@@ -28,7 +32,7 @@ class TweetIterator:
 		if self.useall:
 			Streamingq  = "SELECT %s FROM streamerallTable WHERE ((lon >= %d AND lon <= %d) AND (lat>=%d AND lat<=%d))"%(','.join(self.collect_items),Grid[0],Grid[2],Grid[1],Grid[3])
 		else:
-			Streamingq  = "SELECT %s FROM streamer%sTable"%(','.join(self.collect_items),self.place)
+			Streamingq  = "SELECT %s FROM %sTable"%(','.join(self.collect_items),self.db+self.place)
 		self.curr.execute(Streamingq)
 
 
@@ -44,7 +48,7 @@ class TweetIterator:
 
 class TweetSnap:
 
-	def __init__(self,place="Boston",timeWindow=60*30,UsersUnique=True,Placename2Geocode=True):
+	def __init__(self,db,place="Boston",timeWindow=60*30,UsersUnique=True,Placename2Geocode=True):
 
 		"""
 	    place        : Name of location which will be covered using heatmap
@@ -57,7 +61,8 @@ class TweetSnap:
 		self.collect_items = ['user_id','place','screen_name','lat','lon','created_at','text']
 		self.place   = place
 		self.Grid = locationbox[self.place]
-		self.ObjIter = TweetIterator(place,collect_items=self.collect_items)
+		self.ObjIter = TweetIterator(db,place,collect_items=self.collect_items)
+		self.end     = 0
 
 		#TimeStart - Stores current timePointer for the TweetSnap iterator
 		self.time_start = time.gmtime()
@@ -108,12 +113,13 @@ class TweetSnap:
 		while 1:
 
 			try:
-				
+
 				item  = self.ObjIter.next()
 
 				#Tweets with no GPS are assigned place_name geocodes
 				if item['lon']==0 and self.Placename2Geocode:
 						item['lon'],item['lat'] = GetGeocode(item['place'])
+
 
 				#Additional filter blocks all tweets outside place grid
 				if not (item['lon']>=self.Grid[0] and item['lon']<=self.Grid[2] and item['lat']>=self.Grid[1] and item['lat']<=self.Grid[3]):
@@ -133,6 +139,7 @@ class TweetSnap:
 				shiftWindow = (TIME<self.time_start) or (((time.mktime(TIME)-time.mktime(self.time_start)>self.timeWindow)) and self.timeWindow!=-1)
 
 			except TypeError:
+				self.end = 1
 				shiftWindow=True
 
 			if shiftWindow:
