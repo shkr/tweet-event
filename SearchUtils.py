@@ -44,8 +44,8 @@ class T_Tokenizer:
   def make_phrases(self,text,threshold=0):
 
     for phrase,value in self.Phrases.items():
-      if phrase in text and value>threshold:
-        text = text.replace(phrase,''.join(phrase.split()))
+      if phrase in text and value>threshold and ('-'+phrase not in text):
+        text = text.replace(phrase,'-'.join(phrase.split()))
 
     return text.split()
 

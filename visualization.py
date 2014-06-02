@@ -4,6 +4,9 @@ from Clustering import GMM_clustering
 from sklearn import preprocessing
 from SearchUtils import T_Tokenizer, get_vocabulary
 import matplotlib.pyplot as plt
+
+from mpl_toolkits.mplot3d import Axes3D
+from mpl_toolkits.mplot3d import proj3d
 import matplotlib.gridspec as gridspec
 import prettyplotlib as ppl
 import pandas as pd
@@ -32,7 +35,79 @@ rcParams['patch.edgecolor'] = 'white'
 rcParams['patch.facecolor'] = dark2_colors[0]
 rcParams['font.family'] = 'StixGeneral'
 
-def clustering_distribution(ClusterType=Placename_clustering):
+def lat_place(db,**kwargs):
+
+
+
+  TIME_START = kwargs.get("TIME_START",time.gmtime(0))
+
+
+  if isinstance(TIME_START,str):
+    TIME_START  = time.gmtime(time.mktime(time.strptime(TIME_START,"%d %b %H:%M %Z %Y")))
+
+  TS = TweetIterator(db=db,collect_items=['created_at','place','lon','lat'],TIME_START=TIME_START)
+  TIME_PLACE = TS.curr.fetchall()
+  ClusterLabels = [str(item[1].encode('ascii','ignore')) for item in TIME_PLACE]
+  TIMES         = [time.mktime(time.strptime(item[0],"%a %b %d %H:%M:%S +0000 %Y")) for item in TIME_PLACE]
+  Lon =          [float(item[2]) for item in TIME_PLACE]
+  Lat =          [float(item[3]) for item in TIME_PLACE]
+  """Method to skip time when iterating from the aws rdbms"""
+  #Conditional variable needs initialization
+  TIME_DIFF       = -1
+  k = 0
+  while TIME_DIFF<0:
+    TIME_DIFF  = TIMES[k]-time.mktime(TIME_START)
+    k+=1
+
+  print TIMES[k],time.mktime(TIME_START)
+  Lon  = Lon[k:]
+  Lat  = Lat[k:]
+
+  # ClusterLabels = ClusterLabels[k:]
+  # LabelCounter  = Counter(ClusterLabels)
+  # LabelSet      = [ item[0] for item in LabelCounter.most_common()[0:50] ]
+  # print len(LabelCounter.most_common())
+  # #Print Results
+  # gs      = gridspec.GridSpec(1,2,width_ratios=[1,1])
+
+  # fig1    = plt.figure(figsize=(12,12))
+  # ax      = fig1.add_subplot(111)
+
+  # NoGeocode   = len(filter(lambda x:x==0,Lats))
+  # NoPlacename = len(filter(lambda x:x=='Unknown',ClusterLabels))
+  # Total       = len(Lats)
+  # ppl.bar(ax,range(3),[NoGeocode,NoPlacename,Total],grid='y')
+  # ax.set_xticks(np.arange(3))
+  # ax.set_xticklabels(['NoGeocode','NoPlacename','Total'],rotation='vertical')
+
+  # fig1.savefig('place_lat.png',bbox_inches="tight")
+  # plt.close(fig1)
+
+  Grid = locationbox['Boston']
+
+  #Plot results
+  fig2 = plt.figure(dpi=200)
+  mpl  = fig2.add_subplot(111)
+  map_ = smopy.Map([Grid[1],Grid[0],Grid[3],Grid[2]],z=13)
+  mpl.set_xticks([])
+  mpl.set_yticks([])
+  mpl.grid(False)
+  mpl.set_xlim(0, map_.w)
+  mpl.set_ylim(map_.h, 0)
+  mpl.axis('off')
+
+  mpl  = map_.show_mpl(mpl)
+
+  for lon,lat in zip(Lon,Lat):
+
+    if not (lon>=Grid[0] and lon<=Grid[2] and lat>=Grid[1] and lat<=Grid[3]):
+          continue
+
+    x,y = map_.to_pixels(lat,lon)
+    mpl.plot(x,y,'b',ms=10,mew=2)
+  fig2.savefig('placename_distribution_map.png',dpi=200,bbox_inches="tight")
+
+def clustering_distribution(db,**kwargs):
 
   #Table
   #Col           Row
@@ -58,73 +133,90 @@ def clustering_distribution(ClusterType=Placename_clustering):
   # Clustering.next()
   # Clustering.build_clusters()
 
-  TS = TweetIterator(collect_items=['place'])
-  PLACES = TS.curr.fetchall()
-  ClusterLabels = [str(place[0]) for place in PLACES]
+  TIME_START = kwargs.get("TIME_START",time.gmtime(0))
 
+
+  if isinstance(TIME_START,str):
+    TIME_START  = time.gmtime(time.mktime(time.strptime(TIME_START,"%d %b %H:%M %Z %Y")))
+
+  TS = TweetIterator(db=db,collect_items=['created_at','place'],TIME_START=TIME_START)
+  TIME_PLACE = TS.curr.fetchall()
+  ClusterLabels = [str(item[1].encode('ascii','ignore')) for item in TIME_PLACE]
+  TIMES         = [time.mktime(time.strptime(item[0],"%a %b %d %H:%M:%S +0000 %Y")) for item in TIME_PLACE]
+
+  """Method to skip time when iterating from the aws rdbms"""
+  #Conditional variable needs initialization
+  TIME_DIFF       = -1
+  k = 0
+  while TIME_DIFF<0:
+    TIME_DIFF  = TIMES[k]-time.mktime(TIME_START)
+    k+=1
+
+  print TIMES[k],time.mktime(TIME_START)
+  ClusterLabels = ClusterLabels[k:]
   LabelCounter  = Counter(ClusterLabels)
-  LabelSet      = [ item[0] for item in LabelCounter.most_common() ]
-
+  LabelSet      = [ item[0] for item in LabelCounter.most_common()[0:50] ]
+  print len(LabelCounter.most_common())
   #Print Results
-  # gs      = gridspec.GridSpec(1,2,width_ratios=[1,2])
-  #
-  # fig1    = plt.figure(figsize=(24,12),dpi=200)
-  #
-  #
-  # ax0     = fig1.add_subplot(gs[0,0])
-  # ax1     = fig1.add_subplot(gs[0,1])
-  #
-  # rowLabels = [ '%d. %s'%(no+1,label) for no,label in enumerate(LabelSet)]
-  # cellText  = [ LabelCounter[label] for label in LabelSet ]
-  # rowLabels.reverse()
-  # cellText.reverse()
-  # for y, label, text in zip(range(len(cellText)),rowLabels,cellText):
-  #   ax0.text(0.0001,(float(y+1)/80.0),s='%s : %s'%(label,text),size=12)
-  #
-  # ax0.xaxis.set_visible(False)
-  # ax0.yaxis.set_visible(False)
-  #
-  # ppl.bar(ax1,range(len(LabelSet)),[LabelCounter[label] for label in LabelSet],grid='y')
-  # ax1.set_xticks(np.arange(len(LabelSet)))
-  # ax1.set_xticklabels(LabelSet,rotation='vertical')
-  #
-  # fig1.savefig('clustering_distribution.png',dpi=200,bbox_inches="tight")
-  # plt.close(fig1)
+  gs      = gridspec.GridSpec(1,2,width_ratios=[1,1])
 
-  print 'here'
+  fig1    = plt.figure(figsize=(56,24))
 
-  #Plot numbers on map
-  #Presentation-related lists
-  visual_patterns = ['xb','xg','xr','xc','xm','xy','xk','xw']
 
-  Grid = locationbox['Boston']
+  ax0     = fig1.add_subplot(gs[0,0])
+  ax1     = fig1.add_subplot(gs[0,1])
 
-  #Plot results
-  fig2 = plt.figure(dpi=200)
-  mpl  = fig2.add_subplot(111)
-  map_ = smopy.Map([Grid[1],Grid[0],Grid[3],Grid[2]],z=13)
-  mpl.set_xticks([])
-  mpl.set_yticks([])
-  mpl.grid(False)
-  mpl.set_xlim(0, map_.w)
-  mpl.set_ylim(map_.h, 0)
-  mpl.axis('off')
+  rowLabels = [ '%d. %s'%(no+1,label) for no,label in enumerate(LabelSet)]
+  cellText  = [ LabelCounter[label] for label in LabelSet ]
+  rowLabels.reverse()
+  cellText.reverse()
+  for y, label, text in zip(range(len(cellText)),rowLabels,cellText):
+    ax0.text(0.0001,(float(y+1)/80.0),s='%s : %s'%(label,text),size=12)
 
-  mpl  = map_.show_mpl(mpl)
+  ax0.xaxis.set_visible(False)
+  ax0.yaxis.set_visible(False)
 
-  for k,label in enumerate(LabelSet):
-    try:
-      lon,lat = GetGeocode(label)
-      if lon<Grid[0] or lon>Grid[2] or lat<Grid[1] or lat>Grid[3] or LabelCounter[label]<10:
-        raise ValueError('OutofBounds')
-    except:
-      print label
-      continue
-    x,y = map_.to_pixels(lat,lon)
-    mpl.plot(x,y,'%s'%visual_patterns[k%len(visual_patterns)])
-    mpl.text(x+1, y, '%d at %s'%(LabelCounter[label],label), fontsize=8,color=visual_patterns[k%len(visual_patterns)][1])
+  ppl.bar(ax1,range(len(LabelSet)),[LabelCounter[label] for label in LabelSet],grid='y')
+  ax1.set_xticks(np.arange(len(LabelSet)))
+  ax1.set_xticklabels(LabelSet,rotation='vertical')
 
-  fig2.savefig('clustering_distribution_map.png',dpi=200,bbox_inches="tight")
+  fig1.savefig('clustering_distribution.png',bbox_inches="tight")
+  plt.close(fig1)
+
+  # print 'here'
+
+  # #Plot numbers on map
+  # #Presentation-related lists
+  # visual_patterns = ['xb','xg','xr','xc','xm','xy','xk','xw']
+
+  # Grid = locationbox['Boston']
+
+  # #Plot results
+  # fig2 = plt.figure(dpi=200)
+  # mpl  = fig2.add_subplot(111)
+  # map_ = smopy.Map([Grid[1],Grid[0],Grid[3],Grid[2]],z=13)
+  # mpl.set_xticks([])
+  # mpl.set_yticks([])
+  # mpl.grid(False)
+  # mpl.set_xlim(0, map_.w)
+  # mpl.set_ylim(map_.h, 0)
+  # mpl.axis('off')
+
+  # mpl  = map_.show_mpl(mpl)
+
+  # for k,label in enumerate(LabelSet):
+  #   try:
+  #     lon,lat = GetGeocode(label)
+  #     if lon<Grid[0] or lon>Grid[2] or lat<Grid[1] or lat>Grid[3] or LabelCounter[label]<10:
+  #       raise ValueError('OutofBounds')
+  #   except:
+  #     print label
+  #     continue
+  #   x,y = map_.to_pixels(lat,lon)
+  #   mpl.plot(x,y,'%s'%visual_patterns[k%len(visual_patterns)])
+  #   mpl.text(x+1, y, '%d at %s'%(LabelCounter[label],label), fontsize=8,color=visual_patterns[k%len(visual_patterns)][1])
+
+  # fig2.savefig('clustering_distribution_map.png',dpi=200,bbox_inches="tight")
 
 
 def print_vocabulary_report(db,scale=60*20,**kwargs):
@@ -196,7 +288,7 @@ def print_vocabulary_report(db,scale=60*20,**kwargs):
   gs      = gridspec.GridSpec(2,2,width_ratios=[1,2],height_ratios=[1,4])
   gs.update(left=0.05,right=0.48,wspace=0.00000000000000000000000000000000000000005,hspace=0.00000000000000000000000000000000000000005)
 
-  fig1    = plt.figure(figsize=(36,50),dpi=200)
+  fig1    = plt.figure(figsize=(36,90),dpi=200)
 
 
   ax0     = fig1.add_subplot(gs[0,1])
@@ -215,7 +307,7 @@ def print_vocabulary_report(db,scale=60*20,**kwargs):
   ax0.set_xlim(0,len(TimeList)-1)
   ax0.xaxis.tick_top()
   ax0.yaxis.tick_right()
-  ax0.set_xticks(np.arange(0,len(TimeList),3))
+  ax0.set_xticks(np.arange(0,len(TimeList),5))
   ax0.set_xticklabels(TimeList,rotation='vertical')
 
   #HotWordColorMap
@@ -223,7 +315,7 @@ def print_vocabulary_report(db,scale=60*20,**kwargs):
   ax1.yaxis.tick_right()
   ax1.set_yticks(np.arange(len(WordList)))
   ax1.set_yticklabels(WordList)
-  ax1.set_xticks(np.arange(len(TimeList)))
+  ax1.set_xticks(np.arange(0,len(TimeList),5))
   ax1.set_xticklabels(TimeList,rotation='vertical')
 
   ax1.grid(True, 'major', color='w', linestyle='-', linewidth=0.7)
@@ -749,9 +841,188 @@ def visualize_timeframe(db,timeWindow,**kwargs):
     Words= Words
 
     #Append to Dataframe
-    df = df.append(pd.DataFrame({'Virality':Virality,'Locality':Locality,'Volume':Volume,'Words':Words,'TimeWindow':TimeWindow}),ignore_index=True)
+    df = df.append({'Virality':Virality,'Locality':Locality,'Volume':Volume,'Words':Words,'TimeWindow':TimeWindow},ignore_index=True)
 
   return df
+
+def ThreeDView(Details,NS,save=False,**kwargs):
+
+  scale  = kwargs.get('scale',False)
+
+  X      = np.array([   NS['Poisson'],\
+                        NS['LocalEntropy'],\
+                        NS['GlobalEntropy']],dtype=np.float64)
+
+  if scale != False:
+    if scale == 'minmax':
+      min_max_scaler = preprocessing.MinMaxScaler()
+      X_copy = np.copy(X)
+      X = min_max_scaler.fit_transform(X.T)
+      X = X.T
+    elif scale=='standard':
+      scaler = preprocessing.StandardScaler()
+      X_copy = np.copy(X)
+      X = scaler.fit_transform(X.T)
+      X = X.T
+
+  #Visualize data
+  fig    = plt.figure()
+  ax     = fig.add_subplot(111,projection='3d')
+
+  Flag        = cPickle.load(open('21Flag.Store'))
+
+  REDS        = [ k for k,f in enumerate(Flag) if f in ['5','4','50']]
+
+  reds0       = [ t for k,t in enumerate(X[0,:]) if k in REDS ]
+  reds1       = [ t1 for k,(t1,t2) in enumerate(zip(X[1,:],X[2,:])) if k in REDS ]
+  reds2       = [ t2 for k,(t1,t2) in enumerate(zip(X[1,:],X[2,:])) if k in REDS ]
+
+  blues0       = [ t for k,t in enumerate(X[0,:]) if k not in REDS ]
+  blues1       = [ t1 for k,(t1,t2) in enumerate(zip(X[1,:],X[2,:])) if k not in REDS ]
+  blues2       = [ t2 for k,(t1,t2) in enumerate(zip(X[1,:],X[2,:])) if k not in REDS ]
+
+
+  #ax.plot(X[0,:],X[1,:],X[2,:],'*')
+
+  #ax.plot(reds0,reds1,reds2,'.',color='red')
+  ax.plot(blues0,blues1,blues2,'*',color='green')
+
+  plt.title(Details['Name'])
+
+
+  ax.set_xlabel('Poisson')
+  ax.set_ylabel('Local Entropy')
+  ax.set_zlabel('Global Entropy')
+  ax.legend(loc='upper right')
+
+  if save:
+    fig.savefig('3DVIEW_%s.png'%Details['Name'])
+  else:
+    plt.show()
+
+import cPickle
+
+def PCA(D,NS,Categories= ['Poisson','LocalEntropy','GlobalEntropy'],**kwargs):
+
+  #Sample Categories
+  [C1, C2, C3]   = Categories
+
+  #Samples Matrix
+  all_samples      = np.array([   NS[C1],\
+                                  NS[C2],\
+                                  NS[C3]],dtype=np.float64)
+
+
+  scale = kwargs.get('scale',False)
+
+  if scale != False:
+    if scale == 'minmax':
+      scaler = preprocessing.MinMaxScaler()
+      all_samples_copy = np.copy(all_samples)
+      all_samples = scaler.fit_transform(all_samples.T)
+      all_samples = all_samples.T
+    elif scale=='standard':
+      scaler = preprocessing.StandardScaler()
+      all_samples_copy = np.copy(all_samples)
+      all_samples = scaler.fit_transform(all_samples.T)
+      all_samples = all_samples.T
+
+  mean_c1, mean_c2, mean_c3 = scaler.mean_
+
+  #Scatter Matrix : (n-1)*Covariance Matrix
+  scatter_matrix = np.zeros((3,3))
+  for i in range(all_samples.shape[1]):
+    scatter_matrix += (all_samples[:,i].reshape(3,1)\
+         ).dot((all_samples[:,i].reshape(3,1)).T)
+
+  print('Scatter Matrix:\n', scatter_matrix)
+
+  # eigenvectors and eigenvalues for the from the scatter matrix
+  eig_val_sc, eig_vec_sc = np.linalg.eig(scatter_matrix)
+
+  # Make a list of (eigenvalue, eigenvector) tuples
+  eig_pairs = [(np.abs(eig_val_sc[i]), eig_vec_sc[:,i]) for i in range(len(eig_val_sc))]
+
+  # Sort the (eigenvalue, eigenvector) tuples from high to low ; .sort() value is default 1st item in tuple
+  eig_pairs.sort()
+  eig_pairs.reverse()
+
+  #Eigenvalues List
+  for i in eig_pairs:
+      print(i[0])
+
+  #Visualize Eigenvectors
+  from matplotlib import pyplot as plt
+  from mpl_toolkits.mplot3d import Axes3D
+  from mpl_toolkits.mplot3d import proj3d
+  from matplotlib.patches import FancyArrowPatch
+
+
+  class Arrow3D(FancyArrowPatch):
+      def __init__(self, xs, ys, zs, *args, **kwargs):
+          FancyArrowPatch.__init__(self, (0,0), (0,0), *args, **kwargs)
+          self._verts3d = xs, ys, zs
+
+      def draw(self, renderer):
+          xs3d, ys3d, zs3d = self._verts3d
+          xs, ys, zs = proj3d.proj_transform(xs3d, ys3d, zs3d, renderer.M)
+          self.set_positions((xs[0],ys[0]),(xs[1],ys[1]))
+          FancyArrowPatch.draw(self, renderer)
+
+  fig = plt.figure(figsize=(7,7))
+  ax = fig.add_subplot(111, projection='3d')
+
+  ax.plot(all_samples[0,:], all_samples[1,:],\
+      all_samples[2,:], 'o', markersize=8, color='green', alpha=0.2)
+  ax.plot([mean_c1], [mean_c2], [mean_c3], 'o', \
+      markersize=10, color='red', alpha=0.5)
+  for v in eig_vec_sc.T:
+      a = Arrow3D([mean_c1, v[0]], [mean_c2, v[1]],\
+          [mean_c3, v[2]], mutation_scale=20, lw=3, arrowstyle="-|>", color="r")
+      ax.add_artist(a)
+  ax.set_xlabel(C1)
+  ax.set_ylabel(C2)
+  ax.set_zlabel(C3)
+
+  plt.title('Eigenvectors')
+
+  plt.show()
+
+  matrix_w = np.hstack((eig_pairs[0][1].reshape(3,1), eig_pairs[1][1].reshape(3,1)))
+  print('Matrix W:\n', matrix_w)
+
+  transformed = matrix_w.T.dot(all_samples)
+  print transformed.shape
+  Flag        = cPickle.load(open('21Flag.store'))
+
+  REDS        = [ k for k,f in enumerate(Flag) if f in ['5']]
+
+  reds0       = [ t for k,t in enumerate(transformed[0,:]) if k in REDS ]
+  reds1       = [ t for k,t in enumerate(transformed[1,:]) if k in REDS ]
+
+  blues0       = [ t for k,t in enumerate(transformed[0,:]) if k not in REDS ]
+  blues1       = [ t for k,t in enumerate(transformed[1,:]) if k not in REDS ]
+
+
+  #plt.plot(transformed[0,:], transformed[1,:],
+  #     '^', markersize=7, color='red', alpha=0.5)
+
+  plt.plot(reds0, reds1,
+       '*', markersize=7, color='red', alpha=0.5)
+
+  plt.plot(blues0, blues1,
+       '*', markersize=7, color='green', alpha=0.5)
+
+
+  plt.xlabel('x_values')
+  plt.ylabel('y_values')
+  plt.legend()
+  plt.title('Transformed samples with into 2-Dimensions')
+
+  plt.draw()
+  plt.show()
+
+  return [transformed,matrix_w]
 
 
 if __name__=='__main__':

@@ -101,16 +101,17 @@ class Placename_clustering:
 
 class GMM_clustering:
 
-	def __init__(self,SnapIter=None,components=range(5,20),visualize=False):
+	def __init__(self,components=range(5,20),**kwargs):
 
-		self.SnapIter = SnapIter
 		self.Snap  = None
 		self.components = components
-		self.visualize = visualize
+		self.SnapIter = kwargs.get('SnapIter',None)
+		self.visualize = kwargs.get('visualize',False)
+
 
 	def build_clusters(self):
 
-		self.labels = GMM_clustering.run(np.vstack(self.Snap['LOC']),components = self.components,visualize=self.visualize,Grid=self.SnapIter.Grid if self.visualize==True else None,name=self.Snap['TimeWindow'],text=self.Snap['TEXT'])
+		self.labels = GMM_clustering.run(np.vstack(self.Snap['LOC']),components = self.components,visualize=self.visualize,Grid=self.SnapIter.Grid if self.visualize==True else None,name=self.Snap.get('TimeWindow',None),text=self.Snap.get('TEXT',None))
 
 	def next(self):
 		self.Snap = self.SnapIter.next()

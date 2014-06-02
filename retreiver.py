@@ -16,7 +16,7 @@ from sklearn import cluster
 
 class TweetIterator:
 
-	def __init__(self,db,place='Boston',collect_items=[],useall=False):
+	def __init__(self,db,place='Boston',collect_items=[],useall=False,TIME_START=None):
 		self.place = place
 		self.useall = useall
 		#Database : db
@@ -34,7 +34,9 @@ class TweetIterator:
 		else:
 			Streamingq  = "SELECT %s FROM %sTable"%(','.join(self.collect_items),self.db+self.place)
 		self.curr.execute(Streamingq)
-
+		
+		#if TIME_START!=None:
+		#	self.SetStart(TIME_START)
 
 	def __iter__(self):
 		"""dict iterator of items from table"""
